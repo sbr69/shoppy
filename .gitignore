@@ -12,8 +12,12 @@ server/dist/
 
 # Database
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 
 # OS files
 .DS_Store

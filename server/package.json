@@ -8,6 +8,15 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.0.1",
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "google-auth-library": "^10.9.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "uuid": "^14.0.1"
+  }
 }
