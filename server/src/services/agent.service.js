@@ -3,6 +3,7 @@ import getDb from '../db/database.js';
 import { parseIntent } from './intent.service.js';
 import { rankProducts } from './product.service.js';
 import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
+import { executePayment } from './payment.service.js';
 
 /**
  * The Agent Orchestrator.
@@ -14,7 +15,7 @@ import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
  * 4. For "confirm_purchase" → execute purchase (Phase 5)
  * 5. For other actions → respond conversationally
  */
-export async function processMessage(userId, sessionId, message) {
+export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
 
   // Save user message
@@ -35,7 +36,7 @@ export async function processMessage(userId, sessionId, message) {
       break;
 
     case 'confirm_purchase':
-      agentResponse = await handleConfirmPurchase(userId, sessionId);
+      agentResponse = await handleConfirmPurchase(userId, sessionId, googleSub);
       break;
 
     case 'cancel':
@@ -171,9 +172,9 @@ async function buildProductSuggestion(userId, products, intent, isMock) {
 const pendingPurchases = new Map();
 
 /**
- * Handle purchase confirmation.
+ * Handle purchase confirmation — executes Stellar payment.
  */
-async function handleConfirmPurchase(userId, sessionId) {
+async function handleConfirmPurchase(userId, sessionId, googleSub) {
   const pendingKey = `pending_${userId}`;
   const pending = pendingPurchases.get(pendingKey);
 
@@ -196,16 +197,45 @@ async function handleConfirmPurchase(userId, sessionId) {
   const { product } = pending;
   pendingPurchases.delete(pendingKey);
 
-  // Phase 5 will add real Stellar payment + checkout here
-  return {
-    type: 'purchase_pending',
-    content: `Purchasing "${product.name}" for ${product.currency === 'INR' ? '₹' : product.currency}${product.price?.toLocaleString()}... This will be completed with Stellar payment in the next update.`,
-    metadata: {
-      product,
-      status: 'pending_payment',
-      message: 'Stellar payment integration coming in Phase 5.',
-    },
-  };
+  // Find the site ID for this product
+  const db = getDb();
+  let siteId = null;
+  if (product.siteName) {
+    const site = db.prepare(
+      'SELECT id FROM connected_sites WHERE user_id = ? AND site_name = ?'
+    ).get(userId, product.siteName);
+    siteId = site?.id || null;
+  }
+
+  // Execute Stellar payment
+  try {
+    const result = await executePayment(userId, googleSub, product, siteId);
+
+    return {
+      type: 'purchase_success',
+      content: `Purchase complete! "${product.name}" has been bought for ${result.priceXlm} XLM. Your on-chain receipt is recorded on Stellar.`,
+      metadata: {
+        product,
+        purchase: {
+          txHash: result.txHash,
+          priceXlm: result.priceXlm,
+          explorerUrl: result.explorerUrl,
+          purchaseId: result.purchaseId,
+          timestamp: new Date().toISOString(),
+        },
+      },
+    };
+  } catch (err) {
+    console.error('❌ Payment failed:', err.message);
+    return {
+      type: 'purchase_failed',
+      content: `Payment failed: ${err.message}`,
+      metadata: {
+        product,
+        error: err.message,
+      },
+    };
+  }
 }
 
 /**

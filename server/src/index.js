@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import sitesRoutes from './routes/sites.routes.js';
+import purchasesRoutes from './routes/purchases.routes.js';
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/sites', sitesRoutes);
+app.use('/api/purchases', purchasesRoutes);
 
 // ─── Health check ───
 app.get('/api/health', (req, res) => {

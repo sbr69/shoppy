@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
+import ReceiptCard from './ReceiptCard';
 import TypingIndicator from './TypingIndicator';
 
 const SUGGESTIONS = [
@@ -39,7 +40,16 @@ export default function ChatWindow() {
     try {
       const { data } = await api.get('/chat/history');
       if (data.messages) {
-        setMessages(data.messages);
+        const enriched = data.messages.map(msg => {
+          if (msg.role === 'agent' && msg.metadata) {
+            if (msg.metadata.purchase?.txHash) return { ...msg, type: 'purchase_success' };
+            if (msg.metadata.error && msg.metadata.product) return { ...msg, type: 'purchase_failed' };
+            if (msg.metadata.product && msg.metadata.reasoning) return { ...msg, type: 'product_suggestion' };
+            if (msg.metadata.status === 'pending_payment') return { ...msg, type: 'purchase_pending' };
+          }
+          return msg;
+        });
+        setMessages(enriched);
       }
     } catch (err) {
       console.error('Failed to load history:', err);
@@ -130,14 +140,47 @@ export default function ChatWindow() {
       );
     }
 
-    // Purchase pending card
+    // Purchase success — show receipt card with Stellar tx link
+    if (msg.type === 'purchase_success' && msg.metadata?.purchase) {
+      return (
+        <div key={msg.id || index}>
+          <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
+          <div style={{ marginLeft: 44, marginTop: 8 }}>
+            <ReceiptCard
+              product={msg.metadata.product}
+              purchase={msg.metadata.purchase}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // Purchase failed
+    if (msg.type === 'purchase_failed') {
+      return (
+        <div key={msg.id || index}>
+          <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
+          <div className="receipt-card receipt-card--error" style={{ marginLeft: 44, marginTop: 8 }}>
+            <div className="receipt-card-header" style={{ color: 'var(--color-error, #ef4444)' }}>
+              <span>&#10007;</span> Payment Failed
+            </div>
+            <div className="receipt-card-row">
+              <span className="receipt-card-label">Reason</span>
+              <span className="receipt-card-value">{msg.metadata?.error || 'Unknown error'}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Legacy purchase pending (from old sessions)
     if (msg.type === 'purchase_pending' && msg.metadata?.product) {
       return (
         <div key={msg.id || index}>
           <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
           <div className="receipt-card" style={{ marginLeft: 44, marginTop: 8 }}>
             <div className="receipt-card-header">
-              ⏳ Purchase Pending
+              &#9203; Purchase Pending
             </div>
             <div className="receipt-card-row">
               <span className="receipt-card-label">Product</span>
@@ -146,13 +189,7 @@ export default function ChatWindow() {
             <div className="receipt-card-row">
               <span className="receipt-card-label">Price</span>
               <span className="receipt-card-value">
-                ₹{msg.metadata.product.price?.toLocaleString()}
-              </span>
-            </div>
-            <div className="receipt-card-row">
-              <span className="receipt-card-label">Status</span>
-              <span className="receipt-card-value" style={{ color: 'var(--color-warning)' }}>
-                Awaiting Stellar Payment (Phase 5)
+                &#8377;{msg.metadata.product.price?.toLocaleString()}
               </span>
             </div>
           </div>
