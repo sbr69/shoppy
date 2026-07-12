@@ -11,14 +11,6 @@ const googleClient = new OAuth2Client(config.googleClientId);
  * Verify a Google ID token and return the payload.
  */
 async function verifyGoogleToken(idToken) {
-  if (idToken === 'mock-dev-token' || idToken.startsWith('mock-')) {
-    return {
-      sub: 'mock-dev-sub-123456',
-      email: 'dev@jarvispays.local',
-      name: 'Dev Mode User',
-      picture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
-    };
-  }
   const ticket = await googleClient.verifyIdToken({
     idToken,
     audience: config.googleClientId,
@@ -36,7 +28,7 @@ async function verifyGoogleToken(idToken) {
 export async function loginWithGoogle(idToken) {
   // 1. Verify with Google
   const payload = await verifyGoogleToken(idToken);
-  const { sub: googleSub, email, name, picture } = payload;
+  const { sub: googleSub, email, name } = payload;
 
   const db = getDb();
 
@@ -47,10 +39,10 @@ export async function loginWithGoogle(idToken) {
     // 3. Create new user
     const userId = uuidv4();
     db.prepare(
-      'INSERT INTO users (id, google_sub, email, name, avatar_url) VALUES (?, ?, ?, ?, ?)'
-    ).run(userId, googleSub, email, name, picture || null);
+      'INSERT INTO users (id, google_sub, email, name) VALUES (?, ?, ?, ?)'
+    ).run(userId, googleSub, email, name);
 
-    user = { id: userId, google_sub: googleSub, email, name, avatar_url: picture };
+    user = { id: userId, google_sub: googleSub, email, name };
 
     // 4. Create Stellar wallet for this user
     await createWalletForUser(userId, googleSub);
@@ -78,7 +70,7 @@ export async function loginWithGoogle(idToken) {
       id: user.id,
       email: user.email,
       name: user.name,
-      avatarUrl: user.avatar_url,
+      avatarUrl: null,
     },
   };
 }

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   JarvisPayz — Chat & App Layout Styles (Light Theme Redesign)
+   JarvisPayz — Chat & App Layout Styles (Warm Minimalist Redesign)
    ═══════════════════════════════════════════════════════════ */
 
 /* ─── App Layout (Sidebar + Chat Container) ─── */
@@ -8,24 +8,25 @@
   height: 100vh;
   overflow: hidden;
   background-color: var(--bg-primary);
+  font-family: var(--font-sans);
 }
 
 /* ─── Sidebar ─── */
 .sidebar {
-  width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
+  width: 300px;
+  min-width: 300px;
   height: 100vh;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  transition: transform var(--duration-normal) var(--ease-out);
+  transition: transform var(--duration-normal) var(--ease-fluid);
   z-index: 5;
 }
 
 .sidebar-header {
-  padding: var(--space-5);
+  padding: var(--space-6);
   border-bottom: 1px solid var(--border-default);
   display: flex;
   align-items: center;
@@ -37,7 +38,13 @@
 }
 
 .sidebar-header .navbar-logo {
-  font-size: var(--text-base);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .sidebar-user-btn {
@@ -50,18 +57,18 @@
 }
 
 .sidebar-user-btn:hover {
-  background: rgba(15, 23, 42, 0.04);
+  background: rgba(28, 25, 23, 0.04);
 }
 
 .sidebar-user-btn img {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 1.5px solid var(--border-default);
 }
 
 .sidebar-section {
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-6);
 }
 
 .sidebar-section:not(:last-child) {
@@ -86,26 +93,29 @@
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .sidebar-wallet-balance {
   display: flex;
   align-items: baseline;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  gap: var(--space-1);
 }
 
 .sidebar-wallet-amount {
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: var(--weight-extrabold);
+  font-weight: var(--weight-medium);
   color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
 
 .sidebar-wallet-unit {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
 }
 
 .sidebar-wallet-address {
@@ -126,19 +136,18 @@
 
 .sidebar-wallet-address:hover {
   color: var(--color-primary);
-  border-color: var(--border-hover);
-  background: var(--bg-card-hover);
+  border-color: var(--color-accent);
+  background: var(--bg-card);
 }
 
 .sidebar-wallet-address .copied-text {
-  color: var(--color-success);
+  color: var(--color-accent);
   font-weight: var(--weight-bold);
 }
 
 .sidebar-wallet-actions {
   display: flex;
   gap: var(--space-2);
-  margin-top: var(--space-4);
 }
 
 .sidebar-wallet-actions .btn {
@@ -146,13 +155,27 @@
   font-size: var(--text-xs);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-}
-
-.sidebar-wallet-actions a.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
+}
+
+.sidebar-wallet-actions .btn-primary {
+  background: var(--color-primary);
+  color: var(--text-inverse);
+}
+.sidebar-wallet-actions .btn-primary:hover {
+  background: var(--color-primary-light);
+}
+
+.sidebar-wallet-actions .btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+.sidebar-wallet-actions .btn-secondary:hover {
+  border-color: var(--color-primary-light);
 }
 
 /* Sidebar Connected Stores List */
@@ -192,8 +215,8 @@
 }
 
 .sidebar-site-name {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -213,13 +236,13 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-success);
-  box-shadow: 0 0 8px var(--color-success);
+  background: var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent);
 }
 
 .sidebar-site-status.paused {
-  background: var(--color-warning);
-  box-shadow: 0 0 8px var(--color-warning);
+  background: var(--text-tertiary);
+  box-shadow: none;
 }
 
 .sidebar-add-site {
@@ -241,15 +264,15 @@
 }
 
 .sidebar-add-site:hover {
-  border-color: var(--color-primary-light);
+  border-color: var(--color-primary);
   color: var(--color-primary);
-  background: rgba(79, 70, 229, 0.04);
+  background: rgba(28, 25, 23, 0.02);
 }
 
 /* Sidebar Footer */
 .sidebar-footer {
   margin-top: auto;
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--border-default);
   background: var(--bg-secondary);
   display: flex;
@@ -268,7 +291,7 @@
 
 .sidebar-footer .btn:hover {
   color: var(--color-primary);
-  background: rgba(15, 23, 42, 0.03);
+  background: rgba(28, 25, 23, 0.03);
 }
 
 /* ─── Chat Container ─── */
@@ -284,9 +307,9 @@
 .chat-header {
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-default);
-  background: rgba(252, 252, 253, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(250, 249, 246, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -310,7 +333,7 @@
   align-items: center;
   gap: var(--space-2);
   font-size: 10px;
-  color: var(--color-success);
+  color: var(--color-accent);
   font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -322,8 +345,8 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--color-success);
-  box-shadow: 0 0 6px var(--color-success);
+  background: var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent);
 }
 
 .chat-mobile-toggle {
@@ -348,7 +371,7 @@
   padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
 
 .chat-messages-empty {
@@ -365,13 +388,15 @@
 .chat-empty-icon {
   font-size: 2.5rem;
   opacity: 0.8;
+  color: var(--color-accent);
 }
 
 .chat-messages-empty h3 {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-medium);
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .chat-messages-empty p {
@@ -397,16 +422,15 @@
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--text-secondary);
-  transition: all var(--duration-fast) var(--ease-spring);
+  transition: all var(--duration-fast) var(--ease-fluid);
   white-space: nowrap;
   background: var(--bg-card);
   box-shadow: var(--shadow-sm);
 }
 
 .chat-suggestion-btn:hover {
-  border-color: var(--color-primary-light);
+  border-color: var(--color-primary);
   color: var(--color-primary);
-  background: rgba(79, 70, 229, 0.04);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
@@ -420,7 +444,7 @@
   display: flex;
   gap: var(--space-3);
   max-width: 720px;
-  animation: fadeInUp 0.3s var(--ease-out) both;
+  animation: fadeInUp 0.3s var(--ease-fluid) both;
 }
 
 .message.user {
@@ -452,7 +476,7 @@
 }
 
 .message.agent .message-avatar {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-accent-light));
+  background: var(--color-accent);
   color: white;
 }
 
@@ -509,9 +533,9 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  max-width: 420px;
+  max-width: 400px;
   box-shadow: var(--shadow-md);
-  animation: fadeInUp 0.3s var(--ease-spring) both;
+  animation: fadeInUp 0.3s var(--ease-fluid) both;
 }
 
 .product-card-image {
@@ -545,15 +569,16 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(79, 70, 229, 0.05);
+  background: var(--bg-secondary);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(79, 70, 229, 0.08);
+  border: 1px solid var(--border-default);
 }
 
 .product-card-name {
-  font-size: var(--text-base);
-  font-weight: var(--weight-bold);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
   margin-bottom: 6px;
   color: var(--text-primary);
   letter-spacing: -0.01em;
@@ -579,7 +604,7 @@
 
 .product-card-price {
   font-family: var(--font-mono);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   font-weight: var(--weight-bold);
   color: var(--text-primary);
 }
@@ -590,14 +615,14 @@
   gap: 3px;
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
-  color: var(--color-warning);
+  color: var(--color-accent);
 }
 
 .product-card-reasoning {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  background: rgba(99, 102, 241, 0.05);
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: var(--space-3);
   margin-bottom: var(--space-4);
@@ -621,7 +646,7 @@
   display: flex;
   gap: var(--space-3);
   align-self: flex-start;
-  animation: fadeIn 0.3s var(--ease-out) both;
+  animation: fadeIn 0.3s var(--ease-fluid) both;
 }
 
 .typing-dots {
@@ -669,13 +694,13 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   padding: var(--space-2) var(--space-3);
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: all var(--duration-fast) var(--ease-fluid);
   box-shadow: var(--shadow-sm);
 }
 
 .chat-input-wrapper:focus-within {
-  border-color: var(--color-primary-light);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(179, 143, 77, 0.05);
 }
 
 .chat-input {
@@ -705,13 +730,13 @@
   align-items: center;
   justify-content: center;
   font-size: var(--text-md);
-  transition: all var(--duration-fast) var(--ease-spring);
+  transition: all var(--duration-fast) var(--ease-fluid);
   cursor: pointer;
 }
 
 .chat-send-btn:hover {
-  background: var(--color-primary-dark);
-  transform: scale(1.04);
+  background: var(--color-primary-light);
+  transform: scale(1.02);
 }
 
 .chat-send-btn:disabled {
@@ -734,19 +759,19 @@
   border: 1px dashed var(--border-default);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
-  max-width: 420px;
+  max-width: 400px;
   box-shadow: var(--shadow-md);
-  animation: fadeInUp 0.3s var(--ease-spring) both;
+  animation: fadeInUp 0.3s var(--ease-fluid) both;
 }
 
 .receipt-card--success {
-  border-color: rgba(16, 185, 129, 0.35);
-  background: linear-gradient(135deg, var(--bg-card), rgba(16, 185, 129, 0.02));
+  border-color: var(--color-accent);
+  background: linear-gradient(135deg, var(--bg-card), rgba(179, 143, 77, 0.02));
 }
 
 .receipt-card--error {
-  border-color: rgba(239, 68, 68, 0.35);
-  background: linear-gradient(135deg, var(--bg-card), rgba(239, 68, 68, 0.02));
+  border-color: rgba(220, 38, 38, 0.3);
+  background: linear-gradient(135deg, var(--bg-card), rgba(220, 38, 38, 0.02));
 }
 
 .receipt-card-header {
@@ -754,9 +779,9 @@
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
-  color: var(--color-success);
+  color: var(--text-primary);
   font-weight: var(--weight-bold);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -769,7 +794,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--color-success);
+  background: var(--color-primary);
   color: white;
   display: inline-flex;
   align-items: center;
@@ -856,7 +881,7 @@
 }
 
 .receipt-card-value--xlm {
-  color: var(--color-success);
+  color: var(--color-accent);
   font-family: var(--font-mono);
   font-weight: var(--weight-bold);
 }
@@ -888,18 +913,18 @@
   justify-content: center;
   gap: var(--space-2);
   padding: 10px var(--space-4);
-  border: 1px solid var(--color-success);
+  border: 1px solid var(--color-primary);
   border-radius: var(--radius-md);
-  color: var(--color-success);
+  color: var(--color-primary);
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   text-decoration: none;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: all var(--duration-fast) var(--ease-fluid);
   width: 100%;
 }
 
 .receipt-card-explorer-btn:hover {
-  background: var(--color-success-bg);
+  background: var(--bg-secondary);
 }
 
 /* ─── Responsive & Mobile Styles ─── */
@@ -921,7 +946,7 @@
   .sidebar-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.4);
+    background: rgba(28, 25, 23, 0.4);
     z-index: calc(var(--z-overlay) - 1);
     opacity: 0;
     pointer-events: none;

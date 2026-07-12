@@ -1,59 +1,50 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Lightning, List, X } from '@phosphor-icons/react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { Wallet, ArrowRight } from '@phosphor-icons/react';
+import '../styles/landing.css';
 
-export default function Navbar() {
+const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+  const { user, login } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
     };
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   return (
-    <nav className={`navbar ${scrolled ? 'scrolled' : ''} ${mobileOpen ? 'mobile-open' : ''}`} id="main-navbar">
-      <div className="navbar-inner">
-        <Link to="/" className="navbar-logo" id="logo-link" onClick={() => setMobileOpen(false)}>
-          <div className="navbar-logo-icon">
-            <Lightning size={18} weight="fill" />
-          </div>
-          <span>JarvisPayz</span>
-        </Link>
-
-        <div className={`navbar-links ${mobileOpen ? 'active' : ''}`}>
-          <a href="#features" className="navbar-link" onClick={() => setMobileOpen(false)}>Features</a>
-          <a href="#how-it-works" className="navbar-link" onClick={() => setMobileOpen(false)}>How It Works</a>
-          <button
-            className="navbar-link btn-link-dashboard"
-            onClick={() => { setMobileOpen(false); navigate('/dashboard'); }}
-          >
-            Dashboard
-          </button>
+    <div className="island-nav-wrapper">
+      <nav className={`island-nav ${scrolled ? 'scrolled' : ''}`}>
+        <a href="/" className="island-logo">
+          <Wallet weight="light" size={24} color="var(--color-accent)" />
+          JarvisPayz
+        </a>
+        
+        <div className="island-links">
+          <a href="#features" className="island-link">Platform</a>
+          <a href="#how-it-works" className="island-link">Methodology</a>
+          <a href="#security" className="island-link">Security</a>
         </div>
 
-        <div className="navbar-actions">
-          <button
-            className="btn btn-primary"
-            id="navbar-get-started"
-            onClick={() => { setMobileOpen(false); navigate('/dashboard'); }}
+        <div className="island-actions">
+          <button 
+            className="btn-pill btn-pill-primary"
+            onClick={() => navigate('/dashboard')}
           >
-            Get Started
-          </button>
-          <button
-            className="navbar-mobile-toggle"
-            id="mobile-menu-toggle"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Toggle menu"
-          >
-            {mobileOpen ? <X size={20} weight="bold" /> : <List size={20} weight="bold" />}
+            {user ? 'Console' : 'Sign In'}
+            <div className="btn-nested-icon">
+              <ArrowRight weight="light" size={16} />
+            </div>
           </button>
         </div>
-      </div>
-    </nav>
+      </nav>
+    </div>
   );
-}
+};
+
+export default Navbar;

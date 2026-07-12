@@ -1,63 +1,38 @@
-import { SignIn, LinkSimple, ShoppingBagOpen } from '@phosphor-icons/react';
+import React from 'react';
+import '../styles/landing.css';
 
-const steps = [
-  {
-    number: 1,
-    numberClass: 'step-1',
-    icon: SignIn,
-    title: 'Sign In & Get a Wallet',
-    description:
-      'One-click Google sign-in creates your Stellar wallet automatically. Fund it with testnet XLM using Friendbot.',
-  },
-  {
-    number: 2,
-    numberClass: 'step-2',
-    icon: LinkSimple,
-    title: 'Connect Your Stores',
-    description:
-      'Add your favourite e-commerce sites. Set spending limits per store. The agent only shops where you allow.',
-  },
-  {
-    number: 3,
-    numberClass: 'step-3',
-    icon: ShoppingBagOpen,
-    title: 'Just Tell It What to Buy',
-    description:
-      'Type "buy wireless earbuds under ₹2000." The agent searches, picks the best option, and buys it — on your approval.',
-  },
-];
-
-export default function HowItWorks() {
+const HowItWorks = () => {
   return (
-    <section className="how-it-works section" id="how-it-works">
-      <div className="container">
-        <div className="how-it-works-header">
-          <span className="badge">✦ How It Works</span>
-          <h2>Three Steps to<br />Effortless Shopping</h2>
-          <p>
-            From sign-up to checkout in under a minute.
-            No wallet extensions, no manual browsing.
-          </p>
+    <section id="how-it-works" className="awwwards-section">
+      <div className="timeline-awwwards">
+        
+        <div className="timeline-step">
+          <div className="step-number">01</div>
+          <div className="step-details">
+            <h3>Intent Declaration</h3>
+            <p>You interact with Jarvis via chat. State what you want to buy, your budget, and any specific parameters.</p>
+          </div>
         </div>
 
-        <div className="steps-container stagger">
-          {steps.map((step, i) => {
-            const IconComponent = step.icon;
-            return (
-              <div className="step-card animate-fade-in-up" key={i} id={`step-${i}`}>
-                <div className={`step-number ${step.numberClass}`}>
-                  {step.number}
-                </div>
-                <div className="step-icon">
-                  <IconComponent size={32} weight="duotone" />
-                </div>
-                <h3>{step.title}</h3>
-                <p>{step.description}</p>
-              </div>
-            );
-          })}
+        <div className="timeline-step">
+          <div className="step-number">02</div>
+          <div className="step-details">
+            <h3>Contract Validation</h3>
+            <p>The AI translates your intent into a strict SpendGuard contract policy, deployed on the Soroban network.</p>
+          </div>
         </div>
+
+        <div className="timeline-step">
+          <div className="step-number">03</div>
+          <div className="step-details">
+            <h3>Secure Execution</h3>
+            <p>Jarvis navigates the storefront. The transaction only clears if all conditions strictly match the on-chain policy.</p>
+          </div>
+        </div>
+
       </div>
     </section>
   );
-}
+};
+
+export default HowItWorks;

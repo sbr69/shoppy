@@ -43,7 +43,7 @@ export default function Dashboard() {
           <p>Sign in with Google to access your AI shopping agent and Stellar wallet.</p>
         </div>
 
-        <div className="login-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+        <div className="login-card-body">
           <GoogleLogin
             onSuccess={async (credentialResponse) => {
               try {
@@ -61,28 +61,6 @@ export default function Dashboard() {
             text="signin_with"
             shape="pill"
           />
-
-          <div style={{ display: 'flex', alignItems: 'center', width: '100%', margin: '4px 0' }}>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border-default)' }} />
-            <span style={{ padding: '0 12px', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 'var(--weight-semibold)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>or</span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border-default)' }} />
-          </div>
-
-          <button
-            className="btn btn-secondary"
-            style={{ width: '100%', maxWidth: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}
-            onClick={async () => {
-              try {
-                await loginWithGoogle('mock-dev-token');
-              } catch (err) {
-                console.error('Mock login error:', err);
-              }
-            }}
-            id="mock-login-btn"
-          >
-            <Lightning size={14} weight="fill" />
-            Continue in Developer Mode
-          </button>
         </div>
 
         <div className="login-card-footer">

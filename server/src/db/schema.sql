@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS users (
   google_sub TEXT UNIQUE NOT NULL,
   email TEXT NOT NULL,
   name TEXT NOT NULL,
-  avatar_url TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 

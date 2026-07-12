@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   JarvisPayz — Dashboard Styles (Light Theme)
-   Login page, loading, and common dashboard primitives
+   JarvisPayz — Dashboard & Login Styles (Warm Minimalist)
    ═══════════════════════════════════════════════════════════ */
 
 /* ─── Loading ─── */
@@ -13,6 +12,7 @@
   gap: var(--space-4);
   color: var(--text-secondary);
   background-color: var(--bg-primary);
+  font-family: var(--font-sans);
 }
 
 .spinner-lg {
@@ -21,7 +21,7 @@
   border: 2px solid var(--border-default);
   border-top-color: var(--color-primary);
   border-radius: 50%;
-  animation: spin 0.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation: spin 0.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
 }
 
 .spinner {
@@ -30,7 +30,7 @@
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: white;
   border-radius: 50%;
-  animation: spin 0.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation: spin 0.6s cubic-bezier(0.25, 1, 0.5, 1) infinite;
   display: inline-block;
 }
 
@@ -47,6 +47,7 @@
   position: relative;
   overflow: hidden;
   background-color: var(--bg-primary);
+  font-family: var(--font-sans);
 }
 
 .login-bg {
@@ -58,33 +59,32 @@
 .login-bg .hero-gradient-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.15;
+  filter: blur(120px);
+  opacity: 0.08;
 }
 
 .login-bg .hero-gradient-orb:nth-child(1) {
-  width: 500px;
-  height: 500px;
+  width: 600px;
+  height: 600px;
   background: var(--color-primary);
   top: -10%;
   right: -10%;
 }
 
 .login-bg .hero-gradient-orb:nth-child(2) {
-  width: 350px;
-  height: 350px;
-  background: var(--color-accent-light);
+  width: 400px;
+  height: 400px;
+  background: var(--color-accent);
   bottom: -5%;
   left: -5%;
-  opacity: 0.1;
 }
 
 .login-bg .hero-grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(15, 23, 42, 0.015) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.015) 1px, transparent 1px);
+    linear-gradient(rgba(28, 25, 23, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 25, 23, 0.015) 1px, transparent 1px);
   background-size: 64px 64px;
   mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
   -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
@@ -94,13 +94,13 @@
   position: relative;
   width: 100%;
   max-width: 420px;
-  padding: var(--space-10);
+  padding: var(--space-8);
   text-align: center;
   background: var(--bg-card);
   border: 1px solid var(--border-default);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
   border-radius: var(--radius-xl);
-  animation: fadeInUp 0.5s var(--ease-out);
+  animation: fadeInUp 0.5s var(--ease-fluid);
   z-index: 1;
 }
 
@@ -109,6 +109,7 @@
 }
 
 .login-card-header h2 {
+  font-family: var(--font-display);
   font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
   color: var(--text-primary);
@@ -137,6 +138,6 @@
 @media (max-width: 480px) {
   .login-card {
     margin: var(--space-4);
-    padding: var(--space-8) var(--space-6);
+    padding: var(--space-6) var(--space-4);
   }
 }

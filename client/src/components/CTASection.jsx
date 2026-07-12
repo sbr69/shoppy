@@ -1,28 +1,37 @@
-import { useNavigate } from 'react-router-dom';
+import React from 'react';
 import { ArrowRight } from '@phosphor-icons/react';
+import '../styles/landing.css';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
-export default function CTASection() {
+const CTASection = () => {
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   return (
-    <section className="cta-section section" id="cta-section">
-      <div className="container">
-        <div className="cta-box">
-          <h2>Ready to Let AI Handle<br />Your Shopping?</h2>
-          <p>
-            Sign up in seconds. No wallet extensions needed.
-            Just your Google account and a shopping list.
-          </p>
-          <button
-            className="btn btn-primary btn-lg"
-            id="cta-get-started"
-            onClick={() => navigate('/dashboard')}
-          >
-            Get Started — It's Free
-            <ArrowRight size={18} weight="bold" style={{ marginLeft: 6 }} />
-          </button>
-        </div>
-      </div>
+    <section className="cta-massive">
+      <div className="eyebrow-tag">Get Started</div>
+      <h2>
+        The Future of<br />
+        Commerce.
+      </h2>
+      {user ? (
+        <button className="btn-pill btn-pill-primary" onClick={() => navigate('/dashboard')}>
+          Access Console
+          <div className="btn-nested-icon">
+            <ArrowRight weight="light" size={16} />
+          </div>
+        </button>
+      ) : (
+        <button className="btn-pill btn-pill-primary" onClick={() => navigate('/dashboard')}>
+          Initialize Jarvis
+          <div className="btn-nested-icon">
+            <ArrowRight weight="light" size={16} />
+          </div>
+        </button>
+      )}
     </section>
   );
-}
+};
+
+export default CTASection;

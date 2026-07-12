@@ -1,68 +1,84 @@
-import { Wallet, Robot, Receipt, Sliders } from '@phosphor-icons/react';
+import React from 'react';
+import { Robot, CreditCard, LockKey, Lightning, Globe, Shield } from '@phosphor-icons/react';
+import '../styles/landing.css';
 
-const features = [
-  {
-    icon: Wallet,
-    color: 'purple',
-    title: 'Custodial Wallet',
-    description:
-      'Sign in with Google and a Stellar wallet is created for you automatically. No extensions, no seed phrases, no friction.',
-  },
-  {
-    icon: Robot,
-    color: 'indigo',
-    title: 'AI-Powered Shopping',
-    description:
-      'Tell the agent what you want in plain English. It searches your connected stores, finds the best match, and presents it for approval.',
-  },
-  {
-    icon: Receipt,
-    color: 'green',
-    title: 'On-Chain Receipts',
-    description:
-      'Every purchase is recorded on the Stellar blockchain. Immutable, transparent, and verifiable — your complete shopping history.',
-  },
-  {
-    icon: Sliders,
-    color: 'orange',
-    title: 'Spending Controls',
-    description:
-      'Set per-site spending caps and manage which stores the agent can shop from. You stay in control while the agent handles the rest.',
-  },
-];
-
-export default function Features() {
+const Features = () => {
   return (
-    <section className="features section" id="features">
-      <div className="container">
-        <div className="features-header">
-          <span className="badge">✦ Features</span>
-          <h2>Everything You Need to<br />Shop Smarter</h2>
-          <p>
-            A complete AI shopping system with blockchain-backed
-            security and transparency.
-          </p>
+    <section id="features" className="awwwards-section-alt">
+      <div className="features-header">
+        <h2>Intelligence at Scale</h2>
+      </div>
+      
+      <div className="bento-awwwards">
+        
+        {/* Core AI */}
+        <div className="bento-cell-8 doppelrand-shell">
+          <div className="doppelrand-core">
+            <div className="bento-icon-wrapper">
+              <Robot weight="light" size={32} />
+            </div>
+            <div className="bento-core-content">
+              <h3>Intent Resolution Engine</h3>
+              <p>JarvisPayz uses advanced LLMs to parse conversational shopping requests into strict, executable transaction parameters.</p>
+            </div>
+          </div>
         </div>
 
-        <div className="features-grid stagger">
-          {features.map((feature, i) => {
-            const IconComponent = feature.icon;
-            return (
-              <div
-                className="feature-card animate-fade-in-up"
-                key={i}
-                id={`feature-card-${i}`}
-              >
-                <div className={`feature-icon ${feature.color}`}>
-                  <IconComponent size={24} weight="duotone" />
-                </div>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-              </div>
-            );
-          })}
+        {/* Global */}
+        <div className="bento-cell-4 doppelrand-shell">
+          <div className="doppelrand-core">
+            <div className="bento-icon-wrapper">
+              <Globe weight="light" size={32} />
+            </div>
+            <div className="bento-core-content">
+              <h3>Universal Access</h3>
+              <p>Operates across any digital storefront seamlessly.</p>
+            </div>
+          </div>
         </div>
+
+        {/* Security (Accent Cell) */}
+        <div className="bento-accent bento-cell-4 doppelrand-shell">
+          <div className="doppelrand-core">
+            <div className="bento-icon-wrapper">
+              <LockKey weight="light" size={32} />
+            </div>
+            <div className="bento-core-content">
+              <h3>Zero-Trust Execution</h3>
+              <p>Keys are never exposed. Smart contracts validate all intent parameters.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Custody */}
+        <div className="bento-cell-4 doppelrand-shell">
+          <div className="doppelrand-core">
+            <div className="bento-icon-wrapper">
+              <Shield weight="light" size={32} />
+            </div>
+            <div className="bento-core-content">
+              <h3>Custodial Wallet</h3>
+              <p>Frictionless onboarding. We manage the cryptography, you manage the funds.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Network */}
+        <div className="bento-cell-4 doppelrand-shell">
+          <div className="doppelrand-core">
+            <div className="bento-icon-wrapper">
+              <Lightning weight="light" size={32} />
+            </div>
+            <div className="bento-core-content">
+              <h3>Stellar Velocity</h3>
+              <p>Leveraging the Stellar network for near-instant, low-cost settlement.</p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
   );
-}
+};
+
+export default Features;
