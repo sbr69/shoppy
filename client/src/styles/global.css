@@ -297,3 +297,200 @@ p {
     padding: var(--space-16) 0;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Toast Notifications
+   ═══════════════════════════════════════════════════════════ */
+
+.toast-container {
+  position: fixed;
+  top: var(--space-6);
+  right: var(--space-6);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  pointer-events: none;
+  max-width: 420px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  animation: toastSlideIn 0.3s var(--ease-out);
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+}
+
+.toast--success {
+  border-color: rgba(0, 230, 118, 0.3);
+  background: linear-gradient(135deg, var(--bg-elevated), rgba(0, 230, 118, 0.06));
+}
+
+.toast--error {
+  border-color: rgba(255, 82, 82, 0.3);
+  background: linear-gradient(135deg, var(--bg-elevated), rgba(255, 82, 82, 0.06));
+}
+
+.toast--warning {
+  border-color: rgba(255, 171, 64, 0.3);
+  background: linear-gradient(135deg, var(--bg-elevated), rgba(255, 171, 64, 0.06));
+}
+
+.toast--info {
+  border-color: rgba(0, 210, 255, 0.3);
+  background: linear-gradient(135deg, var(--bg-elevated), rgba(0, 210, 255, 0.06));
+}
+
+.toast-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.toast--success .toast-icon {
+  background: var(--color-success);
+  color: white;
+}
+
+.toast--error .toast-icon {
+  background: var(--color-error);
+  color: white;
+}
+
+.toast--warning .toast-icon {
+  background: var(--color-warning);
+  color: var(--text-inverse);
+}
+
+.toast--info .toast-icon {
+  background: var(--color-accent);
+  color: var(--text-inverse);
+}
+
+.toast-message {
+  flex: 1;
+  line-height: var(--leading-snug);
+}
+
+.toast-close {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+  transition: all var(--duration-fast);
+}
+
+.toast-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .toast-container {
+    top: var(--space-4);
+    right: var(--space-4);
+    left: var(--space-4);
+    max-width: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   404 Not Found Page
+   ═══════════════════════════════════════════════════════════ */
+
+.notfound-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.notfound-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.notfound-content {
+  position: relative;
+  text-align: center;
+  padding: var(--space-8);
+  max-width: 520px;
+  animation: fadeInUp 0.5s var(--ease-out);
+}
+
+.notfound-code {
+  font-family: var(--font-display);
+  font-size: clamp(6rem, 20vw, 12rem);
+  font-weight: var(--weight-extrabold);
+  line-height: 1;
+  background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-accent) 50%, var(--color-primary-light) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradientShift 4s ease infinite;
+  margin-bottom: var(--space-4);
+}
+
+.notfound-content h1 {
+  font-size: var(--text-3xl);
+  margin-bottom: var(--space-4);
+}
+
+.notfound-content p {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+.notfound-actions {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .notfound-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .notfound-actions .btn {
+    width: 100%;
+    max-width: 280px;
+  }
+}

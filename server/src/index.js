@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import config from './config/env.js';
 import { getDb } from './db/database.js';
+import { generalLimiter, authLimiter, chatLimiter } from './middleware/rateLimiter.js';
 import authRoutes from './routes/auth.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import chatRoutes from './routes/chat.routes.js';
@@ -11,21 +12,39 @@ import purchasesRoutes from './routes/purchases.routes.js';
 
 const app = express();
 
-// ─── Middleware ───
-app.use(helmet());
+// ─── Security Headers ───
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://accounts.google.com", "https://apis.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'", "https://accounts.google.com", "https://horizon-testnet.stellar.org", "https://friendbot.stellar.org"],
+      frameSrc: ["https://accounts.google.com"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
 app.use(cors({
   origin: config.clientUrl,
   credentials: true,
 }));
-app.use(express.json());
+
+app.use(express.json({ limit: '1mb' }));
+
+// ─── Global Rate Limiter ───
+app.use('/api', generalLimiter);
 
 // ─── Initialize Database ───
 getDb();
 
-// ─── Routes ───
-app.use('/api/auth', authRoutes);
+// ─── Routes (with per-route rate limiting) ───
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/wallet', walletRoutes);
-app.use('/api/chat', chatRoutes);
+app.use('/api/chat', chatLimiter, chatRoutes);
 app.use('/api/sites', sitesRoutes);
 app.use('/api/purchases', purchasesRoutes);
 
@@ -34,10 +53,19 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ─── 404 handler ───
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
 // ─── Error handler ───
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  console.error('Unhandled error:', err.message);
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : err.message,
+  });
 });
 
 // ─── Start ───

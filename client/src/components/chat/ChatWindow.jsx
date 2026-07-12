@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import api from '../../services/api';
 import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
@@ -13,8 +14,9 @@ const SUGGESTIONS = [
   'Show me mechanical keyboards',
 ];
 
-export default function ChatWindow() {
+export default function ChatWindow({ onToggleSidebar }) {
   const { user } = useAuth();
+  const toast = useToast();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -87,15 +89,21 @@ export default function ChatWindow() {
         created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev, agentMsg]);
+
+      if (response.type === 'purchase_success') {
+        toast.success('Purchase confirmed on Stellar!');
+      } else if (response.type === 'purchase_failed') {
+        toast.error('Payment failed: ' + (response.metadata?.error || 'Unknown error'));
+      }
     } catch (err) {
-      // Add error message
+      const errorMsg = err.response?.data?.error || 'Something went wrong. Please try again.';
       setMessages(prev => [...prev, {
         id: `error-${Date.now()}`,
         role: 'agent',
-        content: 'Sorry, something went wrong. Please try again.',
+        content: errorMsg,
         created_at: new Date().toISOString(),
       }]);
-      console.error('Chat error:', err);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -212,6 +220,7 @@ export default function ChatWindow() {
       <div className="chat-container">
         <div className="chat-header">
           <div className="chat-header-title">
+            <button className="chat-mobile-toggle" onClick={onToggleSidebar}>&#9776;</button>
             <span>⚡</span>
             <h2>JarvisPayz Agent</h2>
           </div>
@@ -228,6 +237,7 @@ export default function ChatWindow() {
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-title">
+          <button className="chat-mobile-toggle" onClick={onToggleSidebar}>&#9776;</button>
           <span style={{ fontSize: '1.5rem' }}>⚡</span>
           <div>
             <h2>JarvisPayz Agent</h2>

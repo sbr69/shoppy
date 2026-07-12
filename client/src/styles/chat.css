@@ -847,4 +847,43 @@
   .product-card {
     max-width: 100%;
   }
+
+  .receipt-card {
+    max-width: 100%;
+  }
+
+  .message {
+    max-width: 100%;
+  }
+
+  .chat-header-title h2 {
+    font-size: var(--text-base);
+  }
+
+  .chat-suggestions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chat-suggestion-btn {
+    text-align: left;
+  }
+}
+
+@media (max-width: 480px) {
+  .product-card-image {
+    height: 140px;
+  }
+
+  .product-card-actions {
+    flex-direction: column;
+  }
+
+  .receipt-card-product-name {
+    font-size: var(--text-xs);
+  }
+
+  .receipt-card-tx-link {
+    font-size: 10px;
+  }
 }
