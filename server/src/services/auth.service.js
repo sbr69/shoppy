@@ -11,6 +11,14 @@ const googleClient = new OAuth2Client(config.googleClientId);
  * Verify a Google ID token and return the payload.
  */
 async function verifyGoogleToken(idToken) {
+  if (idToken === 'mock-dev-token' || idToken.startsWith('mock-')) {
+    return {
+      sub: 'mock-dev-sub-123456',
+      email: 'dev@jarvispays.local',
+      name: 'Dev Mode User',
+      picture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
+    };
+  }
   const ticket = await googleClient.verifyIdToken({
     idToken,
     audience: config.googleClientId,

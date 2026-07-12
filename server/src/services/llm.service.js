@@ -10,7 +10,7 @@ function getModel() {
       return null; // Fallback mode — no API key
     }
     genAI = new GoogleGenerativeAI(config.geminiApiKey);
-    model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
   }
   return model;
 }

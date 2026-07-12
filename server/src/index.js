@@ -69,7 +69,7 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Start ───
-app.listen(config.port, () => {
+app.listen(config.port, '0.0.0.0', () => {
   console.log(`\n⚡ JarvisPayz server running at http://localhost:${config.port}`);
   console.log(`   Client URL: ${config.clientUrl}`);
   console.log(`   Stellar: ${config.stellarNetwork}`);
