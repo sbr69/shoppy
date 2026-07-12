@@ -1,0 +1,63 @@
+JarvisPayz: An AI-powered autonomous shopping agent that executes purchases on your behalf, governed by on-chain spending policies on Stellar.
+
+1. Problem Statement:-
+
+Online shopping is fragmented and time-consuming. Users juggle multiple sites, compare prices manually, and repeat the same checkout flow every time. AI assistants can suggest what to buy but can't actually buy it.
+
+The gap: there's no system where a user can delegate purchasing intent to an agent, with enforceable, transparent spending controls, without handing over full account or wallet access.
+
+2. Why Stellar?
+
+Stellar's account model solves the agent authorization problem natively.
+
+- Scoped signing keys: a delegated keypair is added to the user's Stellar account with weight below the master threshold. The agent can sign only permitted operations. Full account control stays with the user.
+- Soroban contracts: spending policy (per-site caps, daily limits, merchant allowlist) lives on-chain and is enforced before any purchase executes. The agent cannot bypass it even if compromised.
+- Sub-cent fees + 5s finality: makes on-chain attestation of every purchase economically viable at scale.
+- Built-in asset flexibility: path payments allow multi-asset settlement without external bridges, useful as the payment layer matures.
+
+3. Target Users:-
+
+Tech-comfortable users who want to automate their purchases.
+ 
+4. Technical Architecture:-
+
+Frontend:
+React app. User adds trusted site URLs, sets per-site spending caps, and defines purchase policies (auto-confirm under ₹X, require confirmation above). Purchase history pulled from Stellar contract events.
+
+Soroban Contracts:
+- TrustList: stores user's trusted domains with per-site caps and category tags. User-controlled, on-chain.
+- SpendGuard: stateful policy engine. Tracks rolling daily spend. Agent must pass a pre-purchase check before execution is permitted.
+- Receipt attestation: emits "purchase_attested" events post-checkout, immutable on-chain receipts.
+
+Data Flow:
+1. User submits a purchase instruction in natural language.
+2. Agent parses the user's intent (LLM Call 1) to extract the product, budget, preferences, and constraints.
+3. Agent fetches the user's TrustList from Soroban to identify which shopping sites are authorized and what spending limits apply.
+4. Agent queries all trusted sites in parallel using HTTP APIs or JSON-LD data to retrieve matching product listings.
+5. Agent ranks the retrieved products (LLM Call 2) and selects the best option based on price, availability, and user preferences.
+6. Agent calls the SpendGuard contract on Stellar to verify that the purchase complies with the user's on-chain spending policies.
+7. User confirmation is requested only if the purchase exceeds the configured auto-confirm threshold.
+8. Agent executes the checkout through the merchant's HTTP endpoints using the user's authenticated session.
+9. Agent records an immutable purchase receipt by emitting a receipt attestation event on Stellar after successful checkout.
+10. Done
+
+5. Complexity Evaluation:-
+
+- On-chain policy enforcement: SpendGuard must maintain stateful rolling spend windows in Soroban and correctly gate agent execution. Getting the signing weight model right (scoped key vs master key) requires deep understanding of Stellar's account authorization model.
+
+- Agent sandboxing: the agent's HTTP client enforces domain allowlisting at the network level. It must be hardened against prompt injection attacks from merchant page content. Product data is treated as structured data only, never as instructions.
+
+- Auth session management: the agent needs valid sessions to add to cart and checkout. Handling encrypted credential storage, session expiry detection, and re-auth flows securely is a real engineering problem.
+
+- Minimal LLM surface: intentionally limiting LLM calls to 2–3 per purchase (not using vision or browser automation) keeps costs low but requires the deterministic HTTP + adapter layer to be robust enough to handle the rest.
+
+6. Roadmap:-
+
+MVP:
+Since there are rarely any e-commerce platforms that accept crypto, I have already built my own e-commerce store to test the agent against. Alongside this, I will deploy the TrustList and SpendGuard Soroban contracts. The agent will parse user intent, fetch product data via HTTP from the trusted store, run a SpendGuard check, execute checkout, and log an on-chain receipt. It holds a limited delegated keypair, while the user keeps full control through the master key. A basic frontend lets users add trusted sites, set spending caps, and view purchase history. Success here means the agent completes a purchase end to end and the policy correctly blocks anything out of bounds.
+
+ok then, lets now proceed with the agent part. for the agent website:
+
+user signs in using google in my website -> i create a stellar wallet  for the user that will be managed by the agent -> give user the wallet address of the wallet created on behalf of the user for the agent which will be linked with the google account of the user (mean, if user signs in, in our website, their wallet will be automatically authenticated and connected) -> load testnet xml in that wallet using friendbot -> users signs in to our website it authenticate the wallet of the agent and it will be able to buy things from the provided site using that wallet (means user never have to install wallet extension, then create acc and connect there wallet to interact with our website)
+
+user flow, the user sign to our website -> fund the agent's wallet that was automatically created -> asks the agent "buy earbuds" -> agent browse the autherised website -> add the item to cart and asks for user confirmation -> user say buy -> buy that product on behalf of user. 

@@ -1,0 +1,13 @@
+{
+  "name": "jarvispays-server",
+  "version": "1.0.0",
+  "description": "JarvisPayz AI Shopping Agent — Backend",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
