@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api from '../../services/api';
+import { LinkSimple, X } from '@phosphor-icons/react';
 
 export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
   const [siteUrl, setSiteUrl] = useState('');
@@ -44,7 +45,9 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
       <div className="modal-card glass-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Connect a Store</h3>
-          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button className="modal-close" onClick={onClose} aria-label="Close">
+            <X size={16} />
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-body">
@@ -108,7 +111,10 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
               {loading ? (
                 <><span className="spinner" /> Connecting...</>
               ) : (
-                '🔗 Connect Store'
+                <>
+                  <LinkSimple size={14} weight="bold" />
+                  Connect Store
+                </>
               )}
             </button>
           </div>

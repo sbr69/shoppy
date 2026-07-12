@@ -1,3 +1,5 @@
+import { CheckCircle, ShoppingBag, ArrowSquareOut } from '@phosphor-icons/react';
+
 export default function ReceiptCard({ product, purchase }) {
   const truncateHash = (hash) => {
     if (!hash) return '';
@@ -7,7 +9,7 @@ export default function ReceiptCard({ product, purchase }) {
   return (
     <div className="receipt-card receipt-card--success">
       <div className="receipt-card-header">
-        <span className="receipt-card-icon">&#10003;</span>
+        <CheckCircle size={16} weight="fill" style={{ marginRight: 6 }} />
         Purchase Confirmed
       </div>
 
@@ -16,7 +18,7 @@ export default function ReceiptCard({ product, purchase }) {
           {product.image ? (
             <img src={product.image} alt={product.name} />
           ) : (
-            <span>&#128722;</span>
+            <ShoppingBag size={20} weight="duotone" />
           )}
         </div>
         <div className="receipt-card-product-info">
@@ -52,7 +54,7 @@ export default function ReceiptCard({ product, purchase }) {
             className="receipt-card-tx-link"
           >
             {truncateHash(purchase.txHash)}
-            <span className="receipt-card-external-icon">&#8599;</span>
+            <ArrowSquareOut size={12} style={{ marginLeft: 3 }} />
           </a>
         </span>
       </div>
@@ -71,7 +73,8 @@ export default function ReceiptCard({ product, purchase }) {
           rel="noopener noreferrer"
           className="receipt-card-explorer-btn"
         >
-          View on Stellar Explorer &#8599;
+          View on Stellar Explorer
+          <ArrowSquareOut size={14} style={{ marginLeft: 4 }} />
         </a>
       </div>
     </div>

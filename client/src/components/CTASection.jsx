@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { ArrowRight } from '@phosphor-icons/react';
 
 export default function CTASection() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export default function CTASection() {
             onClick={() => navigate('/dashboard')}
           >
             Get Started — It's Free
-            <span style={{ fontSize: '1.2em' }}>→</span>
+            <ArrowRight size={18} weight="bold" style={{ marginLeft: 6 }} />
           </button>
         </div>
       </div>

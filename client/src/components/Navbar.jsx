@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Lightning, List, X } from '@phosphor-icons/react';
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -15,24 +16,31 @@ export default function Navbar() {
   }, []);
 
   return (
-    <nav className={`navbar ${scrolled ? 'scrolled' : ''}`} id="main-navbar">
+    <nav className={`navbar ${scrolled ? 'scrolled' : ''} ${mobileOpen ? 'mobile-open' : ''}`} id="main-navbar">
       <div className="navbar-inner">
-        <Link to="/" className="navbar-logo" id="logo-link">
-          <div className="navbar-logo-icon">⚡</div>
+        <Link to="/" className="navbar-logo" id="logo-link" onClick={() => setMobileOpen(false)}>
+          <div className="navbar-logo-icon">
+            <Lightning size={18} weight="fill" />
+          </div>
           <span>JarvisPayz</span>
         </Link>
 
-        <div className="navbar-links">
-          <a href="#features" className="navbar-link">Features</a>
-          <a href="#how-it-works" className="navbar-link">How It Works</a>
-          <a href="#faq" className="navbar-link">FAQ</a>
+        <div className={`navbar-links ${mobileOpen ? 'active' : ''}`}>
+          <a href="#features" className="navbar-link" onClick={() => setMobileOpen(false)}>Features</a>
+          <a href="#how-it-works" className="navbar-link" onClick={() => setMobileOpen(false)}>How It Works</a>
+          <button
+            className="navbar-link btn-link-dashboard"
+            onClick={() => { setMobileOpen(false); navigate('/dashboard'); }}
+          >
+            Dashboard
+          </button>
         </div>
 
         <div className="navbar-actions">
           <button
             className="btn btn-primary"
             id="navbar-get-started"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => { setMobileOpen(false); navigate('/dashboard'); }}
           >
             Get Started
           </button>
@@ -42,7 +50,7 @@ export default function Navbar() {
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label="Toggle menu"
           >
-            {mobileOpen ? '✕' : '☰'}
+            {mobileOpen ? <X size={20} weight="bold" /> : <List size={20} weight="bold" />}
           </button>
         </div>
       </div>

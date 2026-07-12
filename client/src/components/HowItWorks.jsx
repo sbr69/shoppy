@@ -1,8 +1,10 @@
+import { SignIn, LinkSimple, ShoppingBagOpen } from '@phosphor-icons/react';
+
 const steps = [
   {
     number: 1,
     numberClass: 'step-1',
-    icon: '🔑',
+    icon: SignIn,
     title: 'Sign In & Get a Wallet',
     description:
       'One-click Google sign-in creates your Stellar wallet automatically. Fund it with testnet XLM using Friendbot.',
@@ -10,7 +12,7 @@ const steps = [
   {
     number: 2,
     numberClass: 'step-2',
-    icon: '🔗',
+    icon: LinkSimple,
     title: 'Connect Your Stores',
     description:
       'Add your favourite e-commerce sites. Set spending limits per store. The agent only shops where you allow.',
@@ -18,7 +20,7 @@ const steps = [
   {
     number: 3,
     numberClass: 'step-3',
-    icon: '🛒',
+    icon: ShoppingBagOpen,
     title: 'Just Tell It What to Buy',
     description:
       'Type "buy wireless earbuds under ₹2000." The agent searches, picks the best option, and buys it — on your approval.',
@@ -39,16 +41,21 @@ export default function HowItWorks() {
         </div>
 
         <div className="steps-container stagger">
-          {steps.map((step, i) => (
-            <div className="step-card animate-fade-in-up" key={i} id={`step-${i}`}>
-              <div className={`step-number ${step.numberClass}`}>
-                {step.number}
+          {steps.map((step, i) => {
+            const IconComponent = step.icon;
+            return (
+              <div className="step-card animate-fade-in-up" key={i} id={`step-${i}`}>
+                <div className={`step-number ${step.numberClass}`}>
+                  {step.number}
+                </div>
+                <div className="step-icon">
+                  <IconComponent size={32} weight="duotone" />
+                </div>
+                <h3>{step.title}</h3>
+                <p>{step.description}</p>
               </div>
-              <div className="step-icon">{step.icon}</div>
-              <h3>{step.title}</h3>
-              <p>{step.description}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

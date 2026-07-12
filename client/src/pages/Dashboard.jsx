@@ -1,6 +1,7 @@
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import { Lightning } from '@phosphor-icons/react';
 import AppLayout from '../components/layout/AppLayout';
 
 export default function Dashboard() {
@@ -33,7 +34,9 @@ export default function Dashboard() {
       <div className="login-card glass-card">
         <div className="login-card-header">
           <div className="navbar-logo" style={{ justifyContent: 'center' }}>
-            <div className="navbar-logo-icon">⚡</div>
+            <div className="navbar-logo-icon">
+              <Lightning size={18} weight="fill" />
+            </div>
             <span>JarvisPayz</span>
           </div>
           <h2>Welcome Back</h2>

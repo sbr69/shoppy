@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import ConnectSiteModal from './ConnectSiteModal';
 import SiteCard from './SiteCard';
+import { X, PlusCircle, LinkSimple } from '@phosphor-icons/react';
 
 export default function SettingsPanel({ isOpen, onClose }) {
   const [sites, setSites] = useState([]);
@@ -43,7 +44,9 @@ export default function SettingsPanel({ isOpen, onClose }) {
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h2>Settings</h2>
-          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button className="modal-close" onClick={onClose} aria-label="Close">
+            <X size={16} />
+          </button>
         </div>
 
         <div className="settings-body">
@@ -56,7 +59,8 @@ export default function SettingsPanel({ isOpen, onClose }) {
                 onClick={() => setShowModal(true)}
                 id="settings-add-site"
               >
-                + Connect Store
+                <PlusCircle size={14} weight="bold" />
+                Connect Store
               </button>
             </div>
 
@@ -72,7 +76,8 @@ export default function SettingsPanel({ isOpen, onClose }) {
                   className="btn btn-secondary"
                   onClick={() => setShowModal(true)}
                 >
-                  🔗 Connect Your First Store
+                  <LinkSimple size={14} weight="bold" />
+                  Connect Your First Store
                 </button>
               </div>
             ) : (

@@ -5,6 +5,18 @@ import { useToast } from '../../contexts/ToastContext';
 import api from '../../services/api';
 import ConnectSiteModal from '../settings/ConnectSiteModal';
 import SettingsPanel from '../settings/SettingsPanel';
+import {
+  Lightning,
+  Wallet,
+  Coins,
+  Storefront,
+  PlusCircle,
+  Gear,
+  SignOut,
+  ArrowSquareOut,
+  Copy,
+  Check
+} from '@phosphor-icons/react';
 
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
@@ -100,8 +112,10 @@ export default function Sidebar({ isOpen, onClose }) {
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         {/* Header */}
         <div className="sidebar-header">
-          <div className="navbar-logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-            <div className="navbar-logo-icon">⚡</div>
+          <div className="navbar-logo" onClick={() => { onClose(); navigate('/'); }} style={{ cursor: 'pointer' }}>
+            <div className="navbar-logo-icon">
+              <Lightning size={16} weight="fill" />
+            </div>
             <span>JarvisPayz</span>
           </div>
           <button className="sidebar-user-btn" title={user?.email}>
@@ -113,7 +127,9 @@ export default function Sidebar({ isOpen, onClose }) {
 
         {/* Wallet */}
         <div className="sidebar-section">
-          <div className="sidebar-section-title">Wallet</div>
+          <div className="sidebar-section-title">
+            <Wallet size={14} weight="bold" style={{ marginRight: 6 }} /> Wallet
+          </div>
           {walletLoading ? (
             <div className="sidebar-wallet">
               <div className="skeleton-line skeleton-lg" style={{ marginBottom: 8 }} />
@@ -135,7 +151,14 @@ export default function Sidebar({ isOpen, onClose }) {
                 onClick={handleCopy}
                 title="Click to copy full address"
               >
-                {copied ? '✓ Copied!' : truncateAddr(wallet?.publicKey)}
+                {copied ? (
+                  <span className="copied-text"><Check size={12} weight="bold" /> Copied!</span>
+                ) : (
+                  <>
+                    <span>{truncateAddr(wallet?.publicKey)}</span>
+                    <Copy size={12} />
+                  </>
+                )}
               </div>
               <div className="sidebar-wallet-actions">
                 <button
@@ -146,7 +169,10 @@ export default function Sidebar({ isOpen, onClose }) {
                   {funding ? (
                     <><span className="spinner" /> Funding...</>
                   ) : (
-                    '☄️ Fund'
+                    <>
+                      <Coins size={14} weight="bold" />
+                      Fund
+                    </>
                   )}
                 </button>
                 <a
@@ -155,7 +181,8 @@ export default function Sidebar({ isOpen, onClose }) {
                   rel="noopener noreferrer"
                   className="btn btn-secondary"
                 >
-                  Explorer ↗
+                  Explorer
+                  <ArrowSquareOut size={14} />
                 </a>
               </div>
             </div>
@@ -164,17 +191,21 @@ export default function Sidebar({ isOpen, onClose }) {
 
         {/* Connected Sites */}
         <div className="sidebar-section">
-          <div className="sidebar-section-title">Connected Stores ({sites.length})</div>
+          <div className="sidebar-section-title">
+            <Storefront size={14} weight="bold" style={{ marginRight: 6 }} /> Connected Stores ({sites.length})
+          </div>
           <div className="sidebar-sites-list">
             {sitesLoading ? (
               <>
-                <div className="skeleton-line" style={{ height: 48, borderRadius: 10 }} />
-                <div className="skeleton-line" style={{ height: 48, borderRadius: 10 }} />
+                <div className="skeleton-line" style={{ height: 48, borderRadius: 8 }} />
+                <div className="skeleton-line" style={{ height: 48, borderRadius: 8 }} />
               </>
             ) : sites.length > 0 ? (
               sites.map((site) => (
                 <div key={site.id} className="sidebar-site-item">
-                  <div className="sidebar-site-favicon">🏪</div>
+                  <div className="sidebar-site-favicon">
+                    <Storefront size={16} weight="duotone" />
+                  </div>
                   <div className="sidebar-site-info">
                     <div className="sidebar-site-name">{site.site_name}</div>
                     <div className="sidebar-site-url">{site.site_url}</div>
@@ -199,7 +230,8 @@ export default function Sidebar({ isOpen, onClose }) {
               onClick={() => setShowConnectModal(true)}
               id="add-site-btn"
             >
-              + Connect Store
+              <PlusCircle size={14} weight="bold" />
+              Connect Store
             </button>
           </div>
         </div>
@@ -207,10 +239,12 @@ export default function Sidebar({ isOpen, onClose }) {
         {/* Footer */}
         <div className="sidebar-footer">
           <button className="btn btn-ghost" onClick={() => setShowSettings(true)}>
-            ⚙️ Settings
+            <Gear size={14} />
+            Settings
           </button>
           <button className="btn btn-ghost" onClick={handleLogout}>
-            🚪 Sign Out
+            <SignOut size={14} />
+            Sign Out
           </button>
         </div>
       </aside>

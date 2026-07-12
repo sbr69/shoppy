@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api from '../../services/api';
+import { Storefront, Pencil, Trash } from '@phosphor-icons/react';
 
 export default function SiteCard({ site, onUpdate, onRemove }) {
   const [editing, setEditing] = useState(false);
@@ -47,7 +48,9 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
     <div className={`site-card glass-card ${site.status === 'paused' ? 'paused' : ''}`}>
       <div className="site-card-header">
         <div className="site-card-info">
-          <div className="sidebar-site-favicon">🏪</div>
+          <div className="sidebar-site-favicon">
+            <Storefront size={18} weight="duotone" />
+          </div>
           <div>
             <div className="site-card-name">{site.site_name}</div>
             <div className="site-card-url">{site.site_url}</div>
@@ -88,7 +91,9 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
           ) : (
             <div className="site-cap-display" onClick={() => setEditing(true)}>
               <span className="site-cap-value">{site.spending_cap?.toLocaleString()} XLM</span>
-              <span className="site-cap-edit-icon">✏️</span>
+              <span className="site-cap-edit-icon">
+                <Pencil size={12} />
+              </span>
             </div>
           )}
         </div>
@@ -100,7 +105,14 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
           onClick={handleRemove}
           disabled={removing}
         >
-          {removing ? 'Removing...' : '🗑️ Remove'}
+          {removing ? (
+            'Removing...'
+          ) : (
+            <>
+              <Trash size={14} />
+              Remove
+            </>
+          )}
         </button>
       </div>
     </div>

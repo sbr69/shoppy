@@ -1,27 +1,29 @@
+import { Wallet, Robot, Receipt, Sliders } from '@phosphor-icons/react';
+
 const features = [
   {
-    icon: '🔐',
+    icon: Wallet,
     color: 'purple',
     title: 'Custodial Wallet',
     description:
       'Sign in with Google and a Stellar wallet is created for you automatically. No extensions, no seed phrases, no friction.',
   },
   {
-    icon: '🤖',
-    color: 'cyan',
+    icon: Robot,
+    color: 'indigo',
     title: 'AI-Powered Shopping',
     description:
       'Tell the agent what you want in plain English. It searches your connected stores, finds the best match, and presents it for approval.',
   },
   {
-    icon: '📋',
+    icon: Receipt,
     color: 'green',
     title: 'On-Chain Receipts',
     description:
       'Every purchase is recorded on the Stellar blockchain. Immutable, transparent, and verifiable — your complete shopping history.',
   },
   {
-    icon: '⚙️',
+    icon: Sliders,
     color: 'orange',
     title: 'Spending Controls',
     description:
@@ -43,19 +45,22 @@ export default function Features() {
         </div>
 
         <div className="features-grid stagger">
-          {features.map((feature, i) => (
-            <div
-              className="feature-card animate-fade-in-up"
-              key={i}
-              id={`feature-card-${i}`}
-            >
-              <div className={`feature-icon ${feature.color}`}>
-                {feature.icon}
+          {features.map((feature, i) => {
+            const IconComponent = feature.icon;
+            return (
+              <div
+                className="feature-card animate-fade-in-up"
+                key={i}
+                id={`feature-card-${i}`}
+              >
+                <div className={`feature-icon ${feature.color}`}>
+                  <IconComponent size={24} weight="duotone" />
+                </div>
+                <h3>{feature.title}</h3>
+                <p>{feature.description}</p>
               </div>
-              <h3>{feature.title}</h3>
-              <p>{feature.description}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

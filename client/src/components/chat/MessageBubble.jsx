@@ -1,3 +1,5 @@
+import { User, Lightning } from '@phosphor-icons/react';
+
 export default function MessageBubble({ message, userAvatar }) {
   const isUser = message.role === 'user';
   const time = message.created_at
@@ -8,9 +10,9 @@ export default function MessageBubble({ message, userAvatar }) {
     <div className={`message ${isUser ? 'user' : 'agent'}`}>
       <div className="message-avatar">
         {isUser ? (
-          userAvatar ? <img src={userAvatar} alt="You" referrerPolicy="no-referrer" /> : '👤'
+          userAvatar ? <img src={userAvatar} alt="You" referrerPolicy="no-referrer" /> : <User size={14} weight="bold" />
         ) : (
-          '⚡'
+          <Lightning size={14} weight="fill" />
         )}
       </div>
       <div className="message-content">

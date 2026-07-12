@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { ArrowRight } from '@phosphor-icons/react';
 
 export default function Hero() {
   const navigate = useNavigate();
@@ -26,9 +27,8 @@ export default function Hero() {
         </h1>
 
         <p className="hero-subtitle">
-          Tell JarvisPayz what you want. It finds the best deal across your
-          connected stores, handles checkout, and pays — all with on-chain
-          spending controls you set.
+          Just tell JarvisPayz what to buy. It searches connected stores,
+          checkouts securely, and pays using on-chain spending controls.
         </p>
 
         <div className="hero-actions">
@@ -38,7 +38,7 @@ export default function Hero() {
             onClick={() => navigate('/dashboard')}
           >
             Start Shopping with AI
-            <span style={{ fontSize: '1.2em' }}>→</span>
+            <ArrowRight size={16} weight="bold" style={{ marginLeft: 6 }} />
           </button>
           <a href="#how-it-works" className="btn btn-secondary btn-lg" id="hero-cta-secondary">
             See How It Works

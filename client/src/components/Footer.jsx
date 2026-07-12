@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Lightning } from '@phosphor-icons/react';
 
 export default function Footer() {
   return (
@@ -7,7 +8,9 @@ export default function Footer() {
         <div className="footer-content">
           <div className="footer-brand">
             <Link to="/" className="navbar-logo">
-              <div className="navbar-logo-icon">⚡</div>
+              <div className="navbar-logo-icon">
+                <Lightning size={16} weight="fill" />
+              </div>
               <span>JarvisPayz</span>
             </Link>
             <p>

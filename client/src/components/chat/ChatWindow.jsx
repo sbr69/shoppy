@@ -6,6 +6,7 @@ import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
 import ReceiptCard from './ReceiptCard';
 import TypingIndicator from './TypingIndicator';
+import { List, Lightning, ShoppingBagOpen, PaperPlaneRight } from '@phosphor-icons/react';
 
 const SUGGESTIONS = [
   'Buy wireless earbuds under ₹2000',
@@ -220,8 +221,10 @@ export default function ChatWindow({ onToggleSidebar }) {
       <div className="chat-container">
         <div className="chat-header">
           <div className="chat-header-title">
-            <button className="chat-mobile-toggle" onClick={onToggleSidebar}>&#9776;</button>
-            <span>⚡</span>
+            <button className="chat-mobile-toggle" onClick={onToggleSidebar}>
+              <List size={20} />
+            </button>
+            <Lightning size={18} weight="fill" color="var(--color-primary)" />
             <h2>JarvisPayz Agent</h2>
           </div>
         </div>
@@ -237,8 +240,10 @@ export default function ChatWindow({ onToggleSidebar }) {
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-title">
-          <button className="chat-mobile-toggle" onClick={onToggleSidebar}>&#9776;</button>
-          <span style={{ fontSize: '1.5rem' }}>⚡</span>
+          <button className="chat-mobile-toggle" onClick={onToggleSidebar}>
+            <List size={20} />
+          </button>
+          <Lightning size={20} weight="fill" color="var(--color-primary)" />
           <div>
             <h2>JarvisPayz Agent</h2>
             <div className="chat-header-status">Online</div>
@@ -250,10 +255,12 @@ export default function ChatWindow({ onToggleSidebar }) {
       <div className="chat-messages">
         {messages.length === 0 ? (
           <div className="chat-messages-empty">
-            <div className="chat-empty-icon">🛍️</div>
+            <div className="chat-empty-icon">
+              <ShoppingBagOpen size={48} weight="duotone" color="var(--color-primary)" />
+            </div>
             <h3>What would you like to buy?</h3>
             <p>
-              Tell me what you're looking for and I'll find the best deal
+              Tell me what you\'re looking for and I\'ll find the best deal
               across your connected stores.
             </p>
             <div className="chat-suggestions">
@@ -295,7 +302,7 @@ export default function ChatWindow({ onToggleSidebar }) {
             disabled={!input.trim() || loading}
             id="chat-send-btn"
           >
-            ↑
+            <PaperPlaneRight size={16} weight="fill" />
           </button>
         </div>
         <div className="chat-input-hint">

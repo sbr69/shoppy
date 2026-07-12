@@ -1,3 +1,5 @@
+import { Storefront, ShoppingBag, Star, Brain, ShoppingCart, X } from '@phosphor-icons/react';
+
 export default function ProductCard({ product, reasoning, onConfirm, onSkip }) {
   return (
     <div className="product-card">
@@ -5,13 +7,13 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip }) {
         {product.image ? (
           <img src={product.image} alt={product.name} />
         ) : (
-          '🛍️'
+          <ShoppingBag size={48} weight="duotone" />
         )}
       </div>
 
       <div className="product-card-body">
         <div className="product-card-site">
-          <span>🏪</span>
+          <Storefront size={12} weight="bold" />
           {product.siteName || 'Connected Store'}
         </div>
 
@@ -25,13 +27,14 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip }) {
           </span>
           {product.rating && (
             <span className="product-card-rating">
-              ⭐ {product.rating}
+              <Star size={12} weight="fill" /> {product.rating}
             </span>
           )}
         </div>
 
         {reasoning && (
           <div className="product-card-reasoning">
+            <Brain size={14} weight="bold" style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'text-bottom' }} />
             {reasoning}
           </div>
         )}
@@ -42,13 +45,15 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip }) {
             onClick={onConfirm}
             id="product-buy-btn"
           >
-            🛒 Buy This
+            <ShoppingCart size={14} weight="bold" />
+            Buy This
           </button>
           <button
             className="btn btn-secondary"
             onClick={onSkip}
             id="product-skip-btn"
           >
+            <X size={14} weight="bold" />
             Skip
           </button>
         </div>
