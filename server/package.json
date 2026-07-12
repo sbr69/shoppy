@@ -9,6 +9,7 @@
     "start": "node src/index.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@stellar/stellar-sdk": "^16.0.1",
     "better-sqlite3": "^12.11.1",
     "cors": "^2.8.6",

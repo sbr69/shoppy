@@ -5,6 +5,7 @@ import config from './config/env.js';
 import { getDb } from './db/database.js';
 import authRoutes from './routes/auth.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
+import chatRoutes from './routes/chat.routes.js';
 
 const app = express();
 
@@ -22,6 +23,7 @@ getDb();
 // ─── Routes ───
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/chat', chatRoutes);
 
 // ─── Health check ───
 app.get('/api/health', (req, res) => {

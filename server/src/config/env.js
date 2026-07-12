@@ -5,6 +5,9 @@ const config = {
   port: process.env.PORT || 3001,
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 
+  // Gemini API
+  geminiApiKey: process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY',
+
   // Google OAuth
   googleClientId: process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID',
 
