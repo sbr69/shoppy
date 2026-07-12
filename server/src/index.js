@@ -6,6 +6,7 @@ import { getDb } from './db/database.js';
 import authRoutes from './routes/auth.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import chatRoutes from './routes/chat.routes.js';
+import sitesRoutes from './routes/sites.routes.js';
 
 const app = express();
 
@@ -24,6 +25,7 @@ getDb();
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/sites', sitesRoutes);
 
 // ─── Health check ───
 app.get('/api/health', (req, res) => {

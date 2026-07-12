@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import getDb from '../db/database.js';
 import { parseIntent } from './intent.service.js';
 import { rankProducts } from './product.service.js';
+import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
 
 /**
  * The Agent Orchestrator.
@@ -9,7 +10,7 @@ import { rankProducts } from './product.service.js';
  * Flow:
  * 1. Parse user intent (LLM Call 1)
  * 2. Route based on action type
- * 3. For "search" → query connected sites → rank products (LLM Call 2) → return best match
+ * 3. For "search" → query connected sites with real adapters → rank products (LLM Call 2)
  * 4. For "confirm_purchase" → execute purchase (Phase 5)
  * 5. For other actions → respond conversationally
  */
@@ -52,7 +53,7 @@ export async function processMessage(userId, sessionId, message) {
     default:
       agentResponse = {
         type: 'text',
-        content: "I'm your shopping assistant! Tell me what you'd like to buy. For example: \"buy wireless earbuds under ₹2000\"",
+        content: "I'm your shopping assistant! Tell me what you'd like to buy. For example: \"buy wireless earbuds under 2000 rupees\"",
       };
   }
 
@@ -69,7 +70,7 @@ export async function processMessage(userId, sessionId, message) {
 }
 
 /**
- * Handle product search.
+ * Handle product search — now uses real adapters to scrape connected sites.
  */
 async function handleSearch(userId, intent) {
   const db = getDb();
@@ -82,23 +83,57 @@ async function handleSearch(userId, intent) {
   if (sites.length === 0) {
     return {
       type: 'text',
-      content: "You don't have any connected stores yet. Go to Settings → Connected Sites to add an e-commerce site first, then I can search for products there.",
+      content: "You don't have any connected stores yet. Open the sidebar and click \"+ Connect Store\" to add an e-commerce site first, then I can search for products there.",
     };
   }
 
-  // Search products across connected sites
-  // For now, use mock data. Phase 4 will replace this with real HTTP adapters.
-  const allProducts = await searchConnectedSites(sites, intent);
+  // Search across all connected sites using adapters
+  console.log(`\n🔍 Searching ${sites.length} site(s) for: "${intent.product}"`);
 
+  const allProducts = [];
+  const searchErrors = [];
+
+  for (const site of sites) {
+    try {
+      const adapter = new EcommerceAdapter(site);
+      const products = await adapter.searchProducts(intent.product, {
+        maxPrice: intent.maxPrice,
+        minPrice: intent.minPrice,
+      });
+      console.log(`  ✓ ${site.site_name}: ${products.length} products found`);
+      allProducts.push(...products);
+    } catch (err) {
+      console.error(`  ✗ ${site.site_name}: ${err.message}`);
+      searchErrors.push({ site: site.site_name, error: err.message });
+    }
+  }
+
+  // If scraping found nothing, fall back to mock data for demo purposes
   if (allProducts.length === 0) {
-    return {
-      type: 'text',
-      content: `I couldn't find any "${intent.product}" on your connected stores. Try a different search term or connect more stores.`,
-    };
+    console.log('  ↳ No products from scrapers, using mock catalog');
+    const mockProducts = getMockProducts(sites, intent);
+
+    if (mockProducts.length === 0) {
+      let errorMsg = `I couldn't find any "${intent.product}" on your connected stores.`;
+      if (searchErrors.length > 0) {
+        errorMsg += ` Some stores had issues: ${searchErrors.map(e => e.site).join(', ')}.`;
+      }
+      errorMsg += ` Try a different search term or check if the store is accessible.`;
+      return { type: 'text', content: errorMsg };
+    }
+
+    return await buildProductSuggestion(userId, mockProducts, intent, true);
   }
 
+  return await buildProductSuggestion(userId, allProducts, intent, false);
+}
+
+/**
+ * Build a product suggestion response after ranking.
+ */
+async function buildProductSuggestion(userId, products, intent, isMock) {
   // Rank products (LLM Call 2)
-  const { bestMatch, reasoning, allProducts: ranked } = await rankProducts(allProducts, intent);
+  const { bestMatch, reasoning } = await rankProducts(products, intent);
 
   if (!bestMatch) {
     return {
@@ -107,7 +142,7 @@ async function handleSearch(userId, intent) {
     };
   }
 
-  // Store the pending product in the session for confirmation
+  // Store the pending product for confirmation
   const pendingKey = `pending_${userId}`;
   pendingPurchases.set(pendingKey, {
     product: bestMatch,
@@ -115,19 +150,24 @@ async function handleSearch(userId, intent) {
     timestamp: Date.now(),
   });
 
+  const content = isMock
+    ? `I found a match for you! (Using demo catalog — connect a real store for live results)`
+    : `I found a great match for you from ${bestMatch.siteName}!`;
+
   return {
     type: 'product_suggestion',
-    content: `I found a great match for you! Here's what I recommend:`,
+    content,
     metadata: {
       product: bestMatch,
       reasoning,
-      totalResults: allProducts.length,
+      totalResults: products.length,
       intent,
+      isMock,
     },
   };
 }
 
-// In-memory store for pending purchases (will be replaced with DB/Redis in production)
+// In-memory store for pending purchases
 const pendingPurchases = new Map();
 
 /**
@@ -156,15 +196,14 @@ async function handleConfirmPurchase(userId, sessionId) {
   const { product } = pending;
   pendingPurchases.delete(pendingKey);
 
-  // For Phase 3, we simulate the purchase.
-  // Phase 5 will add real Stellar payment + checkout.
+  // Phase 5 will add real Stellar payment + checkout here
   return {
     type: 'purchase_pending',
-    content: `Purchasing "${product.name}" for ${product.currency || '₹'}${product.price}... This will be completed with Stellar payment in the next update.`,
+    content: `Purchasing "${product.name}" for ${product.currency === 'INR' ? '₹' : product.currency}${product.price?.toLocaleString()}... This will be completed with Stellar payment in the next update.`,
     metadata: {
       product,
       status: 'pending_payment',
-      message: 'Stellar payment integration coming in Phase 5. The purchase flow is ready.',
+      message: 'Stellar payment integration coming in Phase 5.',
     },
   };
 }
@@ -205,26 +244,23 @@ function handleQuestion(message) {
 }
 
 /**
- * Search connected sites for products matching the intent.
- * Phase 4 will replace this with real HTTP adapters/scrapers.
- * For now, returns mock product data to test the full chat flow.
+ * Mock product catalog — fallback when real scraping returns no results.
  */
-async function searchConnectedSites(sites, intent) {
-  // Mock product catalog — simulates what a real adapter would return
+function getMockProducts(sites, intent) {
+  const siteName = sites[0]?.site_name || 'Store';
   const mockCatalog = [
-    { name: 'Wireless Bluetooth Earbuds Pro', price: 1499, currency: 'INR', description: 'Premium wireless earbuds with ANC, 30hr battery', rating: 4.5, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Budget Wireless Earbuds', price: 599, currency: 'INR', description: 'Lightweight earbuds with 20hr battery, IPX4', rating: 4.0, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Premium ANC Headphones', price: 3499, currency: 'INR', description: 'Over-ear headphones with active noise cancellation', rating: 4.7, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Gaming Earbuds RGB', price: 999, currency: 'INR', description: 'Low latency gaming earbuds with RGB lighting', rating: 4.2, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Ballpoint Pen Set (10 Pack)', price: 149, currency: 'INR', description: 'Smooth writing ballpoint pens, blue ink, 10-pack', rating: 4.3, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Premium Gel Pens (10 Pack)', price: 299, currency: 'INR', description: 'Smooth gel pens with comfort grip, assorted colors', rating: 4.6, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Laptop Backpack', price: 1299, currency: 'INR', description: 'Water-resistant laptop backpack with USB port', rating: 4.4, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'USB-C Hub 7-in-1', price: 899, currency: 'INR', description: 'USB-C hub with HDMI, USB 3.0, SD card reader', rating: 4.1, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Mechanical Keyboard', price: 2499, currency: 'INR', description: 'RGB mechanical keyboard with blue switches', rating: 4.5, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
-    { name: 'Wireless Mouse', price: 499, currency: 'INR', description: 'Ergonomic wireless mouse, 1600 DPI, USB receiver', rating: 4.3, inStock: true, image: null, url: '#', siteName: sites[0]?.site_name || 'Store' },
+    { name: 'Wireless Bluetooth Earbuds Pro', price: 1499, currency: 'INR', description: 'Premium wireless earbuds with ANC, 30hr battery', rating: 4.5, inStock: true, image: null, url: '#', siteName },
+    { name: 'Budget Wireless Earbuds', price: 599, currency: 'INR', description: 'Lightweight earbuds with 20hr battery, IPX4', rating: 4.0, inStock: true, image: null, url: '#', siteName },
+    { name: 'Premium ANC Headphones', price: 3499, currency: 'INR', description: 'Over-ear headphones with active noise cancellation', rating: 4.7, inStock: true, image: null, url: '#', siteName },
+    { name: 'Gaming Earbuds RGB', price: 999, currency: 'INR', description: 'Low latency gaming earbuds with RGB lighting', rating: 4.2, inStock: true, image: null, url: '#', siteName },
+    { name: 'Ballpoint Pen Set (10 Pack)', price: 149, currency: 'INR', description: 'Smooth writing ballpoint pens, blue ink, 10-pack', rating: 4.3, inStock: true, image: null, url: '#', siteName },
+    { name: 'Premium Gel Pens (10 Pack)', price: 299, currency: 'INR', description: 'Smooth gel pens with comfort grip, assorted colors', rating: 4.6, inStock: true, image: null, url: '#', siteName },
+    { name: 'Laptop Backpack', price: 1299, currency: 'INR', description: 'Water-resistant laptop backpack with USB port', rating: 4.4, inStock: true, image: null, url: '#', siteName },
+    { name: 'USB-C Hub 7-in-1', price: 899, currency: 'INR', description: 'USB-C hub with HDMI, USB 3.0, SD card reader', rating: 4.1, inStock: true, image: null, url: '#', siteName },
+    { name: 'Mechanical Keyboard', price: 2499, currency: 'INR', description: 'RGB mechanical keyboard with blue switches', rating: 4.5, inStock: true, image: null, url: '#', siteName },
+    { name: 'Wireless Mouse', price: 499, currency: 'INR', description: 'Ergonomic wireless mouse, 1600 DPI, USB receiver', rating: 4.3, inStock: true, image: null, url: '#', siteName },
   ];
 
-  // Simple keyword filter to simulate search
   const query = (intent.product || '').toLowerCase();
   const keywords = query.split(/\s+/).filter(k => k.length > 2);
 
@@ -233,12 +269,10 @@ async function searchConnectedSites(sites, intent) {
     return keywords.some(kw => text.includes(kw));
   });
 
-  // Apply price filter
   if (intent.maxPrice) {
     results = results.filter(p => p.price <= intent.maxPrice);
   }
 
-  // If no keyword match, return top items
   if (results.length === 0 && keywords.length > 0) {
     results = mockCatalog.slice(0, 3);
   }
@@ -252,7 +286,6 @@ async function searchConnectedSites(sites, intent) {
 export function getOrCreateSession(userId) {
   const db = getDb();
 
-  // Get the most recent active session
   let session = db.prepare(
     'SELECT * FROM chat_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
   ).get(userId);

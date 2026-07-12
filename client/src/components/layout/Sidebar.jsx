@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
+import ConnectSiteModal from '../settings/ConnectSiteModal';
+import SettingsPanel from '../settings/SettingsPanel';
 
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
@@ -10,6 +12,8 @@ export default function Sidebar({ isOpen, onClose }) {
   const [funding, setFunding] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sites, setSites] = useState([]);
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     fetchWallet();
@@ -30,7 +34,6 @@ export default function Sidebar({ isOpen, onClose }) {
       const { data } = await api.get('/sites');
       setSites(data.sites || []);
     } catch {
-      // Sites endpoint may not exist yet - that's ok
       setSites([]);
     }
   };
@@ -60,6 +63,10 @@ export default function Sidebar({ isOpen, onClose }) {
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleSiteAdded = (site) => {
+    setSites(prev => [site, ...prev]);
   };
 
   return (
@@ -126,7 +133,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
         {/* Connected Sites */}
         <div className="sidebar-section">
-          <div className="sidebar-section-title">Connected Stores</div>
+          <div className="sidebar-section-title">Connected Stores ({sites.length})</div>
           <div className="sidebar-sites-list">
             {sites.length > 0 ? (
               sites.map((site) => (
@@ -136,7 +143,9 @@ export default function Sidebar({ isOpen, onClose }) {
                     <div className="sidebar-site-name">{site.site_name}</div>
                     <div className="sidebar-site-url">{site.site_url}</div>
                   </div>
-                  <div className="sidebar-site-status" />
+                  <div className={`sidebar-site-status ${site.status === 'paused' ? 'paused' : ''}`}
+                    style={site.status === 'paused' ? { background: 'var(--color-warning)' } : {}}
+                  />
                 </div>
               ))
             ) : (
@@ -149,27 +158,39 @@ export default function Sidebar({ isOpen, onClose }) {
                 No stores connected yet
               </div>
             )}
-            <button className="sidebar-add-site" id="add-site-btn">
+            <button
+              className="sidebar-add-site"
+              onClick={() => setShowConnectModal(true)}
+              id="add-site-btn"
+            >
               + Connect Store
             </button>
           </div>
         </div>
 
-        {/* Settings Quick Links */}
-        <div className="sidebar-section">
-          <div className="sidebar-section-title">Settings</div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-            Spending caps and store management coming in the next update.
-          </div>
-        </div>
-
         {/* Footer */}
         <div className="sidebar-footer">
+          <button className="btn btn-ghost" onClick={() => setShowSettings(true)}>
+            ⚙️ Settings
+          </button>
           <button className="btn btn-ghost" onClick={handleLogout}>
             🚪 Sign Out
           </button>
         </div>
       </aside>
+
+      {/* Connect Site Modal */}
+      <ConnectSiteModal
+        isOpen={showConnectModal}
+        onClose={() => setShowConnectModal(false)}
+        onSiteAdded={handleSiteAdded}
+      />
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => { setShowSettings(false); fetchSites(); }}
+      />
     </>
   );
 }
