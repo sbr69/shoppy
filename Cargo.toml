@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["contracts/policy-interface", "contracts/trust-list", "contracts/spend-guard"]
+
+[workspace.dependencies]
+soroban-sdk = "25.0.1"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

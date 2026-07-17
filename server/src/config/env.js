@@ -49,14 +49,33 @@ const config = {
   masterSecret,
   encryptionKeyVersion: 1,
 
+  // Supabase transaction-pooler URI. It is server-only and must never be sent
+  // to the client or committed to source control.
+  supabaseDbUrl: process.env.SUPABASE_DB_URL,
+  databasePoolMax: Number.parseInt(process.env.DATABASE_POOL_MAX || '10', 10),
+
   // Stellar
-  stellarNetwork: 'testnet',
-  horizonUrl: 'https://horizon-testnet.stellar.org',
-  friendbotUrl: 'https://friendbot.stellar.org',
+  stellarNetwork: process.env.STELLAR_NETWORK || 'testnet',
+  horizonUrl: process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org',
+  sorobanRpcUrl: process.env.STELLAR_SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
+  friendbotUrl: process.env.STELLAR_FRIENDBOT_URL || 'https://friendbot.stellar.org',
+  stellarNetworkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
+  trustListContractId: process.env.TRUSTLIST_CONTRACT_ID || '',
+  spendGuardContractId: process.env.SPENDGUARD_CONTRACT_ID || '',
+  settlementTokenContractId: process.env.SETTLEMENT_TOKEN_CONTRACT_ID || '',
 
   // A store must be explicitly registered before the agent can access it.
   // This intentionally replaces arbitrary URL scraping for purchase flows.
   supportedStores: parseSupportedStores(process.env.SUPPORTED_STORES_JSON),
 };
+
+if (!Number.isInteger(config.databasePoolMax) || config.databasePoolMax < 1 || config.databasePoolMax > 50) {
+  throw new Error('DATABASE_POOL_MAX must be an integer between 1 and 50');
+}
+if (nodeEnv === 'production') {
+  for (const [name, value] of Object.entries({ SUPABASE_DB_URL: config.supabaseDbUrl, TRUSTLIST_CONTRACT_ID: config.trustListContractId, SPENDGUARD_CONTRACT_ID: config.spendGuardContractId, SETTLEMENT_TOKEN_CONTRACT_ID: config.settlementTokenContractId })) {
+    if (!value) throw new Error(`${name} is required in production`);
+  }
+}
 
 export default config;

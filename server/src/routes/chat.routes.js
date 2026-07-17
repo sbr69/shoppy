@@ -17,7 +17,7 @@ router.post('/message', authenticate, async (req, res) => {
     const cleanMessage = validateChatMessage(message);
 
     // Get or create session
-    const session = getOrCreateSession(req.user.userId);
+    const session = await getOrCreateSession(req.user.userId);
 
     // Process through the agent
     const response = await processMessage(req.user.userId, session.id, cleanMessage, req.user.googleSub);
@@ -37,10 +37,10 @@ router.post('/message', authenticate, async (req, res) => {
  * GET /api/chat/history
  * Returns message history for the current session.
  */
-router.get('/history', authenticate, (req, res) => {
+router.get('/history', authenticate, async (req, res) => {
   try {
-    const session = getOrCreateSession(req.user.userId);
-    const messages = getSessionMessages(session.id);
+    const session = await getOrCreateSession(req.user.userId);
+    const messages = await getSessionMessages(session.id);
 
     // Parse metadata JSON for each message
     const parsed = messages.map(msg => ({

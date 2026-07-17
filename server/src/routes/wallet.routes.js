@@ -2,9 +2,11 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import {
   getWalletByUserId,
+  getOwnerKeypairForSigning,
   getWalletBalance,
   fundWalletWithFriendbot,
 } from '../services/wallet.service.js';
+import { depositEscrow } from '../services/soroban.service.js';
 
 const router = Router();
 
@@ -14,7 +16,7 @@ const router = Router();
  */
 router.get('/', authenticate, async (req, res) => {
   try {
-    const wallet = getWalletByUserId(req.user.userId);
+    const wallet = await getWalletByUserId(req.user.userId);
 
     if (!wallet) {
       return res.status(404).json({ error: 'No wallet found for this user' });
@@ -51,7 +53,7 @@ router.get('/', authenticate, async (req, res) => {
  */
 router.post('/fund', authenticate, async (req, res) => {
   try {
-    const wallet = getWalletByUserId(req.user.userId);
+    const wallet = await getWalletByUserId(req.user.userId);
 
     if (!wallet) {
       return res.status(404).json({ error: 'No wallet found for this user' });
@@ -62,6 +64,22 @@ router.post('/fund', authenticate, async (req, res) => {
   } catch (err) {
     console.error('❌ Wallet fund error:', err.message);
     res.status(500).json({ error: 'Failed to fund wallet', details: err.message });
+  }
+});
+
+/** Move XLM from the owner wallet into SpendGuard escrow. */
+router.post('/escrow/deposit', authenticate, async (req, res) => {
+  try {
+    const amountXlm = Number(req.body?.amountXlm);
+    if (!Number.isFinite(amountXlm) || amountXlm <= 0) return res.status(400).json({ error: 'amountXlm must be a positive number' });
+    const wallet = await getWalletByUserId(req.user.userId);
+    if (!wallet) return res.status(404).json({ error: 'No wallet found for this user' });
+    const ownerKeypair = await getOwnerKeypairForSigning(req.user.userId, req.user.googleSub);
+    const txHash = await depositEscrow({ ownerKeypair, ownerPublicKey: wallet.public_key, amountXlm });
+    res.status(202).json({ txHash, status: 'submitted' });
+  } catch (err) {
+    console.error('Escrow deposit error:', err.message);
+    res.status(500).json({ error: 'Failed to submit escrow deposit' });
   }
 });
 

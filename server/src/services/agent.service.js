@@ -10,155 +10,84 @@ const INTENT_TTL_MS = 10 * 60 * 1000;
 
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
-  db.prepare('INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)')
-    .run(uuidv4(), sessionId, 'user', message);
-
+  await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
   const intent = await parseIntent(message);
-  let agentResponse;
-  switch (intent.action) {
-    case 'search': agentResponse = await handleSearch(userId, sessionId, intent); break;
-    case 'confirm_purchase': agentResponse = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId); break;
-    case 'cancel': agentResponse = handleCancel(userId, sessionId); break;
-    case 'greeting': agentResponse = handleGreeting(); break;
-    default: agentResponse = handleQuestion(); break;
-  }
-
-  const id = uuidv4();
-  db.prepare('INSERT INTO messages (id, session_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)')
-    .run(id, sessionId, 'agent', agentResponse.content, JSON.stringify(agentResponse.metadata || null));
-  return { id, ...agentResponse };
+  let response;
+  if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
+  else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
+  else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
+  else if (intent.action === 'greeting') response = { type: 'text', content: 'Hi! Tell me what you want to buy and I will search your authorized stores.' };
+  else response = { type: 'text', content: 'I can search authorized stores, prepare an order, then require your confirmation before a guarded on-chain payment.' };
+  const [saved] = await db`insert into messages (session_id, role, content, metadata) values (${sessionId}, 'agent', ${response.content}, ${response.metadata ? db.json(response.metadata) : null}) returning id`;
+  return { id: saved.id, ...response };
 }
 
 async function handleSearch(userId, sessionId, intent) {
   const db = getDb();
-  const sites = db.prepare("SELECT * FROM connected_sites WHERE user_id = ? AND status = 'active'").all(userId);
-  if (!sites.length) {
-    return { type: 'text', content: 'You do not have an active, authorized store. Connect a registered store and complete its authorization before searching.' };
-  }
-
-  const results = await Promise.allSettled(sites.map(async (site) => {
-    const adapter = new EcommerceAdapter(site);
-    const products = await adapter.searchProducts(intent.product, { maxPrice: intent.maxPrice, minPrice: intent.minPrice });
-    return products.map((product) => ({ ...product, siteId: site.id }));
-  }));
+  const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
+  if (!sites.length) return { type: 'text', content: 'You do not have an active, authorized store.' };
+  const results = await Promise.allSettled(sites.map(async (site) => (await new EcommerceAdapter(site).searchProducts(intent.product, { maxPrice: intent.maxPrice, minPrice: intent.minPrice })).map((product) => ({ ...product, siteId: site.id }))));
   const products = results.filter((result) => result.status === 'fulfilled').flatMap((result) => result.value);
-  if (!products.length) {
-    const unavailable = results.filter((result) => result.status === 'rejected').length;
-    return { type: 'text', content: unavailable ? 'I could not retrieve live inventory from your authorized stores. Please reconnect the store or try again.' : `No live, in-stock products match “${intent.product}”.` };
-  }
-
+  if (!products.length) return { type: 'text', content: 'No live, in-stock products matched your request in authorized stores.' };
   const { bestMatch, reasoning } = await rankProducts(products, intent);
-  if (!bestMatch?.id || !bestMatch.siteId) return { type: 'text', content: 'I found products but could not safely identify one to purchase.' };
-  const site = sites.find((candidate) => candidate.id === bestMatch.siteId);
-  const id = uuidv4();
-  const expiresAt = new Date(Date.now() + INTENT_TTL_MS).toISOString();
-  const quantity = Math.min(Math.max(Number(intent.quantity) || 1, 1), 100);
-  db.prepare(
-    `INSERT INTO purchase_intents (id, user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'selected', ?, ?)`
-  ).run(id, userId, sessionId, site.id, JSON.stringify(bestMatch), quantity, uuidv4(), expiresAt);
-
-  return {
-    type: 'product_suggestion',
-    content: `I found a live match at ${site.site_name}. I will obtain the merchant’s final total before any Stellar payment.`,
-    metadata: { product: bestMatch, reasoning, purchaseIntentId: id, quantity, expiresAt, policy: { dailyCapXlm: site.spending_cap, autoConfirmThresholdXlm: site.auto_confirm_threshold } },
-  };
+  const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
+  if (!bestMatch || !site) return { type: 'text', content: 'I could not safely identify a product to purchase.' };
+  const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
+  const [created] = await db`
+    insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
+    values (${userId}, ${sessionId}, ${site.id}, ${db.json(bestMatch)}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
+  return { type: 'product_suggestion', content: `I found a live match at ${site.site_name}. I will verify the merchant total before any payment.`, metadata: { product: bestMatch, reasoning, purchaseIntentId: created.id, quantity: created.quantity, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 
-function findIntent(userId, sessionId, requestedId) {
+async function findIntent(userId, sessionId, requestedId) {
   const db = getDb();
-  if (requestedId) return db.prepare('SELECT * FROM purchase_intents WHERE id = ? AND user_id = ? AND session_id = ?').get(requestedId, userId, sessionId);
-  return db.prepare(
-    `SELECT * FROM purchase_intents WHERE user_id = ? AND session_id = ?
-     AND state IN ('selected', 'confirmed') ORDER BY updated_at DESC LIMIT 1`
-  ).get(userId, sessionId);
+  if (requestedId) { const [intent] = await db`select * from purchase_intents where id = ${requestedId} and user_id = ${userId} and session_id = ${sessionId}`; return intent; }
+  const [intent] = await db`select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected','confirmed') order by updated_at desc limit 1`;
+  return intent;
 }
 
 async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   const db = getDb();
-  const purchaseIntent = findIntent(userId, sessionId, requestedId);
+  const purchaseIntent = await findIntent(userId, sessionId, requestedId);
   if (!purchaseIntent) return { type: 'text', content: 'There is no purchase awaiting confirmation in this chat.' };
-  if (new Date(purchaseIntent.expires_at).getTime() <= Date.now()) {
-    markIntentState(purchaseIntent.id, 'expired', { reserved_xlm: 0 });
-    return { type: 'text', content: 'That product selection expired. Please search again so I can re-check price and stock.' };
-  }
-  const site = db.prepare("SELECT * FROM connected_sites WHERE id = ? AND user_id = ? AND status = 'active'").get(purchaseIntent.site_id, userId);
+  if (new Date(purchaseIntent.expires_at).getTime() <= Date.now()) { await markIntentState(purchaseIntent.id, 'expired', { reserved_xlm: 0 }); return { type: 'text', content: 'That selection expired. Please search again.' }; }
+  const [site] = await db`select * from connected_sites where id = ${purchaseIntent.site_id} and user_id = ${userId} and status = 'active'`;
   if (!site) return { type: 'text', content: 'The selected store is no longer active or authorized.' };
-  const product = JSON.parse(purchaseIntent.product_json);
+  const product = purchaseIntent.product_json;
   const adapter = new EcommerceAdapter(site);
-
-  // First approval creates a merchant order and obtains the exact payable total.
   if (purchaseIntent.state === 'selected') {
     try {
       const checkout = await adapter.prepareCheckout(product, purchaseIntent.quantity, purchaseIntent.idempotency_key);
-      markIntentState(purchaseIntent.id, 'confirmed', {
-        merchant_order_id: checkout.orderId,
-        price_xlm: Number(checkout.xlmAmount),
-        final_total_json: JSON.stringify(checkout),
-      });
-      return {
-        type: 'purchase_ready',
-        content: `The merchant reserved order ${checkout.orderId}. Final payment is ${Number(checkout.xlmAmount).toFixed(7)} XLM. Reply “buy it” once more to approve this exact amount.`,
-        metadata: { product, purchaseIntentId: purchaseIntent.id, checkout },
-      };
-    } catch (error) {
-      return { type: 'purchase_failed', content: `I could not prepare a verified merchant order: ${error.message}`, metadata: { product, error: error.message } };
-    }
+      if (Number(checkout.xlmAmount) > Number(site.per_transaction_cap)) return { type: 'purchase_failed', content: 'The verified total exceeds this store’s on-chain per-transaction limit.' };
+      await markIntentState(purchaseIntent.id, 'confirmed', { merchant_order_id: checkout.orderId, price_xlm: Number(checkout.xlmAmount), final_total_json: checkout });
+      return { type: 'purchase_ready', content: `The merchant reserved order ${checkout.orderId}. Final payment is ${Number(checkout.xlmAmount).toFixed(7)} XLM. Reply “buy it” once more to approve this exact amount.`, metadata: { product, purchaseIntentId: purchaseIntent.id, checkout } };
+    } catch (error) { return { type: 'purchase_failed', content: `I could not prepare a verified merchant order: ${error.message}`, metadata: { product } }; }
   }
-
   try {
-    const reserved = reserveSpend(purchaseIntent.id, userId, site);
+    const reserved = await reserveSpend(purchaseIntent.id, userId, site.id);
     const result = await executePayment(userId, googleSub, reserved, site, product);
     try {
       const confirmation = await adapter.confirmPayment(reserved.merchant_order_id, result.txHash, reserved.idempotency_key);
-      db.prepare("UPDATE purchases SET status = 'confirmed' WHERE id = ?").run(result.purchaseId);
-      markIntentState(purchaseIntent.id, 'order_confirmed', { reserved_xlm: 0 });
-      return {
-        type: 'purchase_success',
-        content: `Purchase complete. The merchant confirmed order ${confirmation.orderId || reserved.merchant_order_id}.`,
-        metadata: { product, purchase: { ...result, orderId: confirmation.orderId || reserved.merchant_order_id, timestamp: new Date().toISOString() } },
-      };
-    } catch (merchantError) {
-      markIntentState(purchaseIntent.id, 'payment_confirmed', { reserved_xlm: 0 });
-      return {
-        type: 'purchase_pending',
-        content: `Your Stellar payment succeeded, but the merchant has not yet confirmed the order. Do not pay again; transaction ${result.txHash} is recorded for support.`,
-        metadata: { product, purchase: { ...result, orderId: reserved.merchant_order_id, timestamp: new Date().toISOString() }, error: merchantError.message },
-      };
-    }
+      await db`update purchases set status = 'confirmed', confirmed_at = now() where id = ${result.purchaseId}`;
+      await markIntentState(purchaseIntent.id, 'order_confirmed', { reserved_xlm: 0 });
+      return { type: 'purchase_success', content: `Purchase complete. The merchant confirmed order ${confirmation.orderId || reserved.merchant_order_id}.`, metadata: { product, purchase: { ...result, orderId: confirmation.orderId || reserved.merchant_order_id, timestamp: new Date().toISOString() } } };
+    } catch (error) { return { type: 'purchase_pending', content: `Your SpendGuard payment was submitted, but the merchant has not confirmed it yet. Do not pay again.`, metadata: { product, purchase: result } }; }
   } catch (error) {
-    if (error.indeterminate) {
-      return {
-        type: 'purchase_pending',
-        content: 'Payment submission status is unknown. The purchase is locked to prevent a duplicate payment; check Stellar before any manual resolution.',
-        metadata: { product, error: error.message },
-      };
-    }
-    markIntentState(purchaseIntent.id, 'failed', { reserved_xlm: 0 });
-    return { type: 'purchase_failed', content: `Payment was not completed: ${error.message}`, metadata: { product, error: error.message } };
+    if (error.indeterminate) return { type: 'purchase_pending', content: 'Payment submission status is unknown. The intent is locked to prevent a duplicate payment.', metadata: { product } };
+    await markIntentState(purchaseIntent.id, 'failed', { reserved_xlm: 0 });
+    return { type: 'purchase_failed', content: `Payment was not completed: ${error.message}`, metadata: { product } };
   }
 }
 
-function handleCancel(userId, sessionId) {
-  const db = getDb();
-  db.prepare("UPDATE purchase_intents SET state = 'cancelled', reserved_xlm = 0, updated_at = datetime('now') WHERE user_id = ? AND session_id = ? AND state IN ('selected', 'confirmed')")
-    .run(userId, sessionId);
-  return { type: 'text', content: 'The pending product selection was cancelled. No payment was made.' };
+async function handleCancel(userId, sessionId) {
+  await getDb()`update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now() where user_id = ${userId} and session_id = ${sessionId} and state in ('selected','confirmed')`;
+  return { type: 'text', content: 'The pending selection was cancelled. No payment was made.' };
 }
 
-function handleGreeting() { return { type: 'text', content: 'Hi! Tell me what you want to buy and I will search your active, authorized stores.' }; }
-function handleQuestion() { return { type: 'text', content: 'I can search active connected stores and create a verified merchant order before requesting an exact payment confirmation.' }; }
-
-export function getOrCreateSession(userId) {
+export async function getOrCreateSession(userId) {
   const db = getDb();
-  let session = db.prepare('SELECT * FROM chat_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(userId);
-  if (!session) {
-    session = { id: uuidv4(), user_id: userId };
-    db.prepare('INSERT INTO chat_sessions (id, user_id) VALUES (?, ?)').run(session.id, userId);
-  }
+  let [session] = await db`select * from chat_sessions where user_id = ${userId} order by created_at desc limit 1`;
+  if (!session) [session] = await db`insert into chat_sessions (user_id) values (${userId}) returning *`;
   return session;
 }
-
-export function getSessionMessages(sessionId, limit = 50) {
-  return getDb().prepare('SELECT id, role, content, metadata, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC LIMIT ?').all(sessionId, limit);
-}
+export async function getSessionMessages(sessionId, limit = 50) { return getDb()`select id, role, content, metadata, created_at from messages where session_id = ${sessionId} order by created_at asc limit ${limit}`; }

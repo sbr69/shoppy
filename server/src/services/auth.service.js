@@ -1,9 +1,8 @@
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
-import { v4 as uuidv4 } from 'uuid';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
-import { createWalletForUser } from './wallet.service.js';
+import { createWalletsForUser } from './wallet.service.js';
 
 /**
  * Verify a Google ID token and return the payload.
@@ -57,19 +56,20 @@ export async function loginWithGoogle(idToken) {
   const db = getDb();
 
   // 2. Check if user exists
-  let user = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(googleSub);
+  let [user] = await db`select * from users where google_sub = ${googleSub}`;
 
   if (!user) {
     // 3. Create new user
-    const userId = uuidv4();
-    const createUser = db.transaction(() => {
-      db.prepare('INSERT INTO users (id, google_sub, email, name) VALUES (?, ?, ?, ?)')
-        .run(userId, googleSub, email, name || email);
-      return createWalletForUser(userId, googleSub);
-    });
-    createUser();
-
-    user = { id: userId, google_sub: googleSub, email, name: name || email, avatar_url: picture || null };
+    const [createdUser] = await db`
+      insert into users (google_sub, email, name, avatar_url)
+      values (${googleSub}, ${email}, ${name || email}, ${picture || null}) returning *`;
+    try {
+      await createWalletsForUser(createdUser.id, googleSub);
+    } catch (error) {
+      await db`delete from users where id = ${createdUser.id}`;
+      throw error;
+    }
+    user = createdUser;
 
     console.log(`🆕 New user created: ${email} (${userId})`);
   } else {

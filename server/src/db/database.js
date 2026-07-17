@@ -1,42 +1,36 @@
-import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import postgres from 'postgres';
+import config from '../config/env.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const DB_PATH = join(__dirname, '..', '..', 'jarvispays.db');
-
-let db;
+let sql;
 
 export function getDb() {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-
-    // Run schema
-    const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf-8');
-    db.exec(schema);
-
-    // Lightweight forward-compatible migrations for databases created by an
-    // earlier MVP build. New installations receive these columns from schema.
-    const columns = db.prepare('PRAGMA table_info(connected_sites)').all().map((column) => column.name);
-    const additions = [
-      ['adapter_id', "TEXT NOT NULL DEFAULT 'unsupported'"],
-      ['merchant_stellar_address', 'TEXT'],
-      ['auto_confirm_threshold', 'REAL DEFAULT 0'],
-    ];
-    for (const [name, definition] of additions) {
-      if (!columns.includes(name)) db.exec(`ALTER TABLE connected_sites ADD COLUMN ${name} ${definition}`);
+  if (!sql) {
+    if (!config.supabaseDbUrl) {
+      throw new Error('SUPABASE_DB_URL is required. Set it to the Supabase transaction-pooler connection string.');
     }
-    const walletColumns = db.prepare('PRAGMA table_info(wallets)').all().map((column) => column.name);
-    if (!walletColumns.includes('key_version')) db.exec('ALTER TABLE wallets ADD COLUMN key_version INTEGER NOT NULL DEFAULT 1');
-
-    console.log('✅ Database initialized');
+    sql = postgres(config.supabaseDbUrl, {
+      max: config.databasePoolMax,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      prepare: false,
+      ssl: config.nodeEnv === 'production' ? 'require' : undefined,
+    });
   }
-  return db;
+  return sql;
+}
+
+export async function verifyDatabaseConnection() {
+  const db = getDb();
+  await db`select 1 as ok`;
+  await db`select id from users limit 1`;
+  console.log('✅ Supabase PostgreSQL connection verified');
+}
+
+export async function closeDatabase() {
+  if (sql) {
+    await sql.end({ timeout: 5 });
+    sql = undefined;
+  }
 }
 
 export default getDb;

@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import config from './config/env.js';
-import { getDb } from './db/database.js';
+import { verifyDatabaseConnection } from './db/database.js';
 import { generalLimiter, authLimiter, chatLimiter } from './middleware/rateLimiter.js';
 import authRoutes from './routes/auth.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
@@ -47,9 +47,6 @@ app.use(express.json({ limit: '1mb' }));
 // ─── Global Rate Limiter ───
 app.use('/api', generalLimiter);
 
-// ─── Initialize Database ───
-getDb();
-
 // ─── Routes (with per-route rate limiting) ───
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/wallet', walletRoutes);
@@ -77,10 +74,18 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ─── Start ───
-app.listen(config.port, '0.0.0.0', () => {
-  console.log(`\n⚡ JarvisPayz server running at http://localhost:${config.port}`);
-  console.log(`   Client URL: ${config.clientUrl}`);
-  console.log(`   Stellar: ${config.stellarNetwork}`);
-  console.log(`   Horizon: ${config.horizonUrl}\n`);
+// ─── Start only after the production database is reachable ───
+async function start() {
+  await verifyDatabaseConnection();
+  app.listen(config.port, '0.0.0.0', () => {
+    console.log(`\n⚡ JarvisPayz server running at http://localhost:${config.port}`);
+    console.log(`   Client URL: ${config.clientUrl}`);
+    console.log(`   Stellar: ${config.stellarNetwork}`);
+    console.log(`   Horizon: ${config.horizonUrl}\n`);
+  });
+}
+
+start().catch((error) => {
+  console.error('Server startup failed:', error.message);
+  process.exit(1);
 });

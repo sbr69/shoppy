@@ -8,9 +8,9 @@ const router = Router();
  * GET /api/purchases
  * Returns the user's purchase history with Stellar tx hashes.
  */
-router.get('/', authenticate, (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
-    const purchases = getPurchaseHistory(req.user.userId);
+    const purchases = await getPurchaseHistory(req.user.userId);
 
     const formatted = purchases.map(p => ({
       ...p,
