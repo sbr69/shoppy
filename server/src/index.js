@@ -9,6 +9,7 @@ import walletRoutes from './routes/wallet.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import sitesRoutes from './routes/sites.routes.js';
 import purchasesRoutes from './routes/purchases.routes.js';
+import { reconcilePendingPurchases } from './services/payment.service.js';
 
 const app = express();
 
@@ -77,6 +78,15 @@ app.use((err, req, res, next) => {
 // ─── Start only after the production database is reachable ───
 async function start() {
   await verifyDatabaseConnection();
+  let reconciling = false;
+  const reconcile = async () => {
+    if (reconciling) return;
+    reconciling = true;
+    try { await reconcilePendingPurchases(); } catch (error) { console.error('Reconciliation worker failed:', error.message); } finally { reconciling = false; }
+  };
+  const interval = setInterval(reconcile, Number(process.env.RECONCILIATION_INTERVAL_MS || 30000));
+  interval.unref();
+  void reconcile();
   app.listen(config.port, '0.0.0.0', () => {
     console.log(`\n⚡ JarvisPayz server running at http://localhost:${config.port}`);
     console.log(`   Client URL: ${config.clientUrl}`);

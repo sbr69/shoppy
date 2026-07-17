@@ -2,6 +2,8 @@ import { createHash } from 'crypto';
 import getDb from '../db/database.js';
 import config from '../config/env.js';
 import { parseFiniteNonNegative, validateSiteUpdate } from './validation.service.js';
+import { getAgentWalletByUserId, getOwnerKeypairForSigning, getWalletByUserId } from './wallet.service.js';
+import { submitCustodialOwnerAction } from './soroban.service.js';
 
 const domainHash = (origin) => createHash('sha256').update(new URL(origin).hostname.toLowerCase()).digest('hex');
 
@@ -34,10 +36,11 @@ export async function updateSite(userId, siteId, updates) {
   const [site] = await getDb()`select * from connected_sites where id = ${siteId} and user_id = ${userId}`;
   if (!site) throw new Error('Site not found');
   if (clean.status === 'active' && !site.auth_token_ciphertext) throw new Error('This store needs merchant authorization before it can be activated');
-  if (clean.spendingCap !== undefined && Number(clean.spendingCap) < Number(site.per_transaction_cap)) throw new Error('spendingCap cannot be lower than perTransactionCap');
+  if (clean.spendingCap !== undefined && Number(clean.spendingCap) < Number(clean.perTransactionCap ?? site.per_transaction_cap)) throw new Error('spendingCap cannot be lower than perTransactionCap');
+  if (clean.perTransactionCap !== undefined && Number(clean.perTransactionCap) > Number(clean.spendingCap ?? site.spending_cap)) throw new Error('perTransactionCap cannot exceed spendingCap');
   if (Object.keys(clean).length === 0) return site;
   const [updated] = await getDb()`
-    update connected_sites set site_name = coalesce(${clean.siteName ?? null}, site_name), spending_cap = coalesce(${clean.spendingCap ?? null}, spending_cap), auto_confirm_threshold = coalesce(${clean.autoConfirmThreshold ?? null}, auto_confirm_threshold), status = coalesce(${clean.status ?? null}, status), trust_rule_version = trust_rule_version + 1, updated_at = now()
+    update connected_sites set site_name = coalesce(${clean.siteName ?? null}, site_name), spending_cap = coalesce(${clean.spendingCap ?? null}, spending_cap), per_transaction_cap = coalesce(${clean.perTransactionCap ?? null}, per_transaction_cap), auto_confirm_threshold = coalesce(${clean.autoConfirmThreshold ?? null}, auto_confirm_threshold), status = coalesce(${clean.status ?? null}, status), trust_rule_version = trust_rule_version + 1, updated_at = now()
     where id = ${siteId} and user_id = ${userId} returning *`;
   return updated;
 }
@@ -46,4 +49,25 @@ export async function removeSite(userId, siteId) {
   const deleted = await getDb()`delete from connected_sites where id = ${siteId} and user_id = ${userId} returning id`;
   if (!deleted.length) throw new Error('Site not found');
   return { success: true };
+}
+
+/** Synchronize a registered merchant's SpendGuard and TrustList policy. */
+export async function syncSitePolicy(userId, googleSub, siteId) {
+  const db = getDb();
+  const [site] = await db`select * from connected_sites where id = ${siteId} and user_id = ${userId}`;
+  if (!site) throw new Error('Site not found');
+  const [wallet, agent, ownerKeypair] = await Promise.all([
+    getWalletByUserId(userId), getAgentWalletByUserId(userId), getOwnerKeypairForSigning(userId, googleSub),
+  ]);
+  if (!wallet?.public_key || !agent?.public_key) throw new Error('Custodial wallet or constrained signer is unavailable');
+  try {
+    const agentResult = await submitCustodialOwnerAction({ actionType: 'set_agent', ownerKeypair, ownerPublicKey: wallet.public_key, agentPublicKey: agent.public_key });
+    const ruleResult = await submitCustodialOwnerAction({ actionType: 'set_trust_rule', ownerKeypair, ownerPublicKey: wallet.public_key, site });
+    const [updated] = await db`update connected_sites set policy_synced_at = now(), policy_sync_error = null, updated_at = now() where id = ${site.id} returning *`;
+    await db`insert into audit_events (user_id, event_type, payload) values (${userId}, 'site_policy_synced', ${db.json({ siteId: site.id, setAgentTx: agentResult.txHash, setRuleTx: ruleResult.txHash })})`;
+    return { site: updated, transactions: { setAgent: agentResult.txHash, setRule: ruleResult.txHash } };
+  } catch (error) {
+    await db`update connected_sites set policy_sync_error = ${error.message}, updated_at = now() where id = ${site.id}`;
+    throw error;
+  }
 }

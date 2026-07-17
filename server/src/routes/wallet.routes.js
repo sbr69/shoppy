@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { fundAgentWalletWithFriendbot, fundWalletWithFriendbot, getAgentWalletByUserId, getWalletBalance, getWalletByUserId } from '../services/wallet.service.js';
+import getDb from '../db/database.js';
 
 const router = Router();
 
@@ -21,6 +22,21 @@ router.post('/fund', authenticate, async (req, res) => {
     const [owner, agent] = await Promise.all([fundWalletWithFriendbot(wallet.public_key), fundAgentWalletWithFriendbot(req.user.userId)]);
     res.json({ ...owner, agent });
   } catch (error) { res.status(500).json({ error: 'Failed to fund testnet wallet' }); }
+});
+
+router.get('/activity', authenticate, async (req, res) => {
+  try {
+    const db = getDb();
+    const [purchases, events] = await Promise.all([
+      db`select id, product_name, price_xlm, stellar_tx_hash, status, created_at, confirmed_at from purchases where user_id = ${req.user.userId} order by created_at desc limit 50`,
+      db`select id, event_type, payload, created_at from audit_events where user_id = ${req.user.userId} order by created_at desc limit 50`,
+    ]);
+    const activity = [
+      ...purchases.map((purchase) => ({ id: `purchase-${purchase.id}`, type: 'purchase', title: purchase.product_name, amountXlm: Number(purchase.price_xlm), status: purchase.status, txHash: purchase.stellar_tx_hash, createdAt: purchase.created_at })),
+      ...events.map((event) => ({ id: `audit-${event.id}`, type: event.event_type, title: event.event_type.replaceAll('_', ' '), metadata: event.payload, createdAt: event.created_at })),
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.json({ activity });
+  } catch (error) { res.status(500).json({ error: 'Failed to load wallet activity' }); }
 });
 
 export default router;

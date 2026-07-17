@@ -15,7 +15,7 @@ const SUGGESTIONS = [
   'Show me mechanical keyboards',
 ];
 
-export default function ChatWindow({ onToggleSidebar }) {
+export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady }) {
   const { user } = useAuth();
   const toast = useToast();
   const [messages, setMessages] = useState([]);
@@ -26,9 +26,7 @@ export default function ChatWindow({ onToggleSidebar }) {
   const inputRef = useRef(null);
 
   // Load chat history on mount
-  useEffect(() => {
-    loadHistory();
-  }, []);
+  useEffect(() => { setInitialLoading(true); setMessages([]); loadHistory(); }, [sessionId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -41,7 +39,8 @@ export default function ChatWindow({ onToggleSidebar }) {
 
   const loadHistory = async () => {
     try {
-      const { data } = await api.get('/chat/history');
+      const { data } = await api.get('/chat/history', { params: sessionId ? { sessionId } : {} });
+      if (data.sessionId && data.sessionId !== sessionId) onSessionReady?.(data.sessionId);
       if (data.messages) {
         const enriched = data.messages.map(msg => {
           if (msg.role === 'agent' && msg.metadata) {
@@ -77,7 +76,8 @@ export default function ChatWindow({ onToggleSidebar }) {
     setLoading(true);
 
     try {
-      const { data } = await api.post('/chat/message', { message: text });
+      const { data } = await api.post('/chat/message', { message: text, ...(sessionId ? { sessionId } : {}) });
+      if (data.sessionId && data.sessionId !== sessionId) onSessionReady?.(data.sessionId);
       const response = data.response;
 
       // Add agent response to state
@@ -109,7 +109,7 @@ export default function ChatWindow({ onToggleSidebar }) {
       setLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, loading, toast]);
+  }, [input, loading, toast, sessionId, onSessionReady]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

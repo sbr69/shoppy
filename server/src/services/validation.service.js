@@ -21,6 +21,7 @@ export function validateSiteUpdate(updates) {
     clean.siteName = updates.siteName.trim();
   }
   if (updates.spendingCap !== undefined) clean.spendingCap = parseFiniteNonNegative(updates.spendingCap, 'spendingCap');
+  if (updates.perTransactionCap !== undefined) clean.perTransactionCap = parseFiniteNonNegative(updates.perTransactionCap, 'perTransactionCap');
   if (updates.autoConfirmThreshold !== undefined) clean.autoConfirmThreshold = parseFiniteNonNegative(updates.autoConfirmThreshold, 'autoConfirmThreshold');
   if (updates.status !== undefined) {
     if (!['active', 'paused'].includes(updates.status)) throw new Error('status must be active or paused');

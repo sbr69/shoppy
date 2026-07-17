@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { addSite, getUserSites, updateSite, removeSite } from '../services/site.service.js';
+import { addSite, getUserSites, updateSite, removeSite, syncSitePolicy } from '../services/site.service.js';
 
 const router = Router();
 
@@ -60,15 +60,14 @@ router.patch('/:id', authenticate, async (req, res) => {
   }
 });
 
-/**
- * Kept as a clear migration response for older dashboard clients. Contract
- * configuration now goes through /wallet/actions/prepare so the browser owner
- * key signs each exact action after a passkey unlock.
- */
 router.post('/:id/policy/sync', authenticate, async (req, res) => {
-  res.status(409).json({
-    error: 'Policy sync now requires a passkey-signed owner action. Prepare set_agent and set_trust_rule actions through /api/wallet/actions/prepare.',
-  });
+  try {
+    const result = await syncSitePolicy(req.user.userId, req.user.googleSub, req.params.id);
+    res.json(result);
+  } catch (error) {
+    console.error('Policy sync error:', error.message);
+    res.status(error.message === 'Site not found' ? 404 : 400).json({ error: error.message });
+  }
 });
 
 /**

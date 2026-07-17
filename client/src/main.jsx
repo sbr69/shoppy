@@ -6,6 +6,7 @@ import './styles/landing.css';
 import './styles/dashboard.css';
 import './styles/chat.css';
 import './styles/settings.css';
+import './styles/workspace.css';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

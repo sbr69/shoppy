@@ -16,9 +16,13 @@ import {
   ArrowSquareOut,
   Copy,
   Check,
+  ChatCircleText,
+  ShoppingBag,
+  ClockCounterClockwise,
+  ShieldCheck,
 } from '@phosphor-icons/react';
 
-export default function Sidebar({ isOpen, onClose }) {
+export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect }) {
   const { user, logout } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -30,6 +34,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const [sitesLoading, setSitesLoading] = useState(true);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [sessions, setSessions] = useState([]);
 
   const fetchWallet = useCallback(async () => {
     try {
@@ -58,7 +63,10 @@ export default function Sidebar({ isOpen, onClose }) {
   useEffect(() => {
     fetchWallet();
     fetchSites();
-  }, [fetchWallet, fetchSites]);
+    api.get('/chat/sessions').then(({ data }) => setSessions(data.sessions || [])).catch(() => setSessions([]));
+  }, [fetchWallet, fetchSites, activeSessionId]);
+
+  const selectSession = (id) => onSessionSelect?.(id);
 
   const handleFund = async () => {
     try {
@@ -124,6 +132,19 @@ export default function Sidebar({ isOpen, onClose }) {
               <img src={user.avatarUrl} alt={user.name} referrerPolicy="no-referrer" />
             )}
           </button>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Workspace">
+          <button className={activeView === 'chat' ? 'active' : ''} onClick={() => onNavigate?.('chat')}><ChatCircleText size={17} /> Shop assistant</button>
+          <button className={activeView === 'orders' ? 'active' : ''} onClick={() => onNavigate?.('orders')}><ShoppingBag size={17} /> Orders</button>
+          <button className={activeView === 'wallet' ? 'active' : ''} onClick={() => onNavigate?.('wallet')}><ClockCounterClockwise size={17} /> Wallet activity</button>
+          <button className={activeView === 'stores' ? 'active' : ''} onClick={() => onNavigate?.('stores')}><ShieldCheck size={17} /> Stores & safeguards</button>
+        </nav>
+
+        <div className="sidebar-history">
+          <div className="sidebar-history-head"><span>Chat history</span><button onClick={onNewChat} title="New chat"><PlusCircle size={16} /></button></div>
+          <button className="sidebar-new-chat" onClick={onNewChat}><PlusCircle size={15} /> New chat</button>
+          {sessions.slice(0, 8).map((session) => <button className={`sidebar-session ${activeSessionId === session.id ? 'active' : ''}`} key={session.id} onClick={() => selectSession(session.id)}>{session.title || 'New shopping chat'}</button>)}
         </div>
 
         {/* Wallet */}

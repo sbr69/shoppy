@@ -143,6 +143,22 @@ export async function submitOwnerAction({ signedTransactionXdr, preparedTransact
   return { txHash: sent.hash, rpcStatus: sent.status, ...(await awaitSubmittedTransaction(server, sent)) };
 }
 
+/** Execute a narrowly defined owner contract action with the server-held custodial key. */
+export async function submitCustodialOwnerAction({ actionType, ownerKeypair, ownerPublicKey, agentPublicKey, site, amountXlm }) {
+  const prepared = await prepareOwnerAction({ actionType, ownerPublicKey, agentPublicKey, site, amountXlm });
+  const transaction = new StellarSdk.Transaction(prepared.transactionXdr, config.stellarNetworkPassphrase);
+  transaction.sign(ownerKeypair);
+  const server = rpc();
+  const sent = await server.sendTransaction(transaction);
+  if (sent.status !== 'PENDING' && sent.status !== 'DUPLICATE') throw new Error(`Custodial owner action was not accepted: ${sent.status}`);
+  return { txHash: sent.hash, rpcStatus: sent.status, ...(await awaitSubmittedTransaction(server, sent)) };
+}
+
+export async function getSorobanTransactionStatus(txHash) {
+  const result = await rpc().getTransaction(txHash);
+  return result?.status || 'NOT_FOUND';
+}
+
 /**
  * Build a SpendGuard spend using the backend agent as transaction source. The
  * returned authorization entry is intentionally unsigned and is the only
