@@ -1,14 +1,23 @@
 import { useAuth } from '../contexts/AuthContext';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Lightning } from '@phosphor-icons/react';
 import AppLayout from '../components/layout/AppLayout';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Dashboard() {
   const { isAuthenticated, loading, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [loginError, setLoginError] = useState('');
+  const toast = useToast();
+
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('storeConnection');
+    if (status === 'success') toast.success('Store connected. Your agent can now use its authorized API.');
+    if (status === 'failed') toast.error('Store authorization did not complete. Please try connecting again.');
+    if (status) window.history.replaceState({}, '', '/dashboard');
+  }, [toast]);
 
   if (loading) {
     return (

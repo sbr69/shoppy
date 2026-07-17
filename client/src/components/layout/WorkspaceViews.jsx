@@ -26,16 +26,16 @@ export function WalletActivityView() {
   </WorkspaceShell>;
 }
 
-export function StoresView() {
+export function StoresView({ onConnectStore, refreshKey }) {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(null);
   const load = () => api.get('/sites').then(({ data }) => setSites(data.sites || [])).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [refreshKey]);
   const sync = async (id) => { setSyncing(id); try { await api.post(`/sites/${id}/policy/sync`); await load(); } finally { setSyncing(null); } };
-  return <WorkspaceShell icon={<ShieldCheck size={22} weight="duotone" />} title="Stores & safeguards" subtitle="Only registered, authenticated merchant APIs can be used by the agent.">
-    {loading ? <div className="workspace-empty">Loading stores…</div> : sites.length === 0 ? <div className="workspace-empty"><ShieldCheck size={34} /><h3>No stores connected</h3><p>Connect a registered merchant from the sidebar to begin.</p></div> : <div className="stores-grid">{sites.map((site) => <article className="store-card" key={site.id}><div><h3>{site.site_name}</h3><p>{site.site_url}</p></div><span className={`status-pill ${site.status}`}>{site.status.replaceAll('_', ' ')}</span><dl><div><dt>Daily limit</dt><dd>{Number(site.spending_cap).toFixed(2)} XLM</dd></div><div><dt>Per order</dt><dd>{Number(site.per_transaction_cap).toFixed(2)} XLM</dd></div><div><dt>On-chain policy</dt><dd>{site.policy_synced_at ? 'Synced' : 'Not synced'}</dd></div></dl>{site.policy_sync_error && <p className="workspace-error">Last sync: {site.policy_sync_error}</p>}<button className="btn btn-secondary" disabled={syncing === site.id} onClick={() => sync(site.id)}>{syncing === site.id ? 'Syncing…' : 'Sync safeguards'}</button></article>)}</div>}
+  return <WorkspaceShell icon={<ShieldCheck size={22} weight="duotone" />} title="Stores & safeguards" subtitle="Only registered, authenticated merchant APIs can be used by the agent." action={<button className="btn btn-primary" onClick={onConnectStore}><CheckCircle size={16} /> Connect store</button>}>
+    {loading ? <div className="workspace-empty">Loading stores…</div> : sites.length === 0 ? <div className="workspace-empty workspace-empty--stores"><ShieldCheck size={38} /><h3>Connect your first store</h3><p>Sign in on your ecommerce site, approve the connection, and let your agent shop only in that account.</p><button className="btn btn-primary" onClick={onConnectStore}>Connect a store</button></div> : <div className="stores-grid">{sites.map((site) => <article className="store-card" key={site.id}><div><h3>{site.site_name}</h3><p>{site.site_url}</p></div><span className={`status-pill ${site.status}`}>{site.status.replaceAll('_', ' ')}</span><dl><div><dt>Daily limit</dt><dd>{Number(site.spending_cap).toFixed(2)} XLM</dd></div><div><dt>Per order</dt><dd>{Number(site.per_transaction_cap).toFixed(2)} XLM</dd></div><div><dt>On-chain policy</dt><dd>{site.policy_synced_at ? 'Synced' : 'Not synced'}</dd></div></dl>{site.policy_sync_error && <p className="workspace-error">Last sync: {site.policy_sync_error}</p>}<button className="btn btn-secondary" disabled={syncing === site.id} onClick={() => sync(site.id)}>{syncing === site.id ? 'Syncing…' : 'Sync safeguards'}</button></article>)}</div>}
   </WorkspaceShell>;
 }
 
-function WorkspaceShell({ icon, title, subtitle, children }) { return <main className="workspace"><header className="workspace-header"><div className="workspace-title-icon">{icon}</div><div><h1>{title}</h1><p>{subtitle}</p></div></header>{children}</main>; }
+function WorkspaceShell({ icon, title, subtitle, action, children }) { return <main className="workspace"><header className="workspace-header"><div className="workspace-title-icon">{icon}</div><div><h1>{title}</h1><p>{subtitle}</p></div>{action && <div className="workspace-header-action">{action}</div>}</header>{children}</main>; }

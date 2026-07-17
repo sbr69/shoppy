@@ -7,13 +7,17 @@ import { submitCustodialOwnerAction } from './soroban.service.js';
 
 const domainHash = (origin) => createHash('sha256').update(new URL(origin).hostname.toLowerCase()).digest('hex');
 
-export async function addSite(userId, { siteUrl, spendingCap = 1000, perTransactionCap, autoConfirmThreshold = 0 }) {
+export function getRegisteredStore(siteUrl) {
   let parsed;
   try { parsed = new URL(siteUrl); } catch { throw new Error('siteUrl must be a valid URL'); }
   if (parsed.protocol !== 'https:' && !(config.nodeEnv !== 'production' && parsed.protocol === 'http:')) throw new Error('Production stores must use HTTPS');
-  const normalizedUrl = parsed.origin;
-  const store = config.supportedStores.find((candidate) => candidate.origin === normalizedUrl);
-  if (!store) throw new Error('This store is not supported. Only registered stores with a verified agent API can be connected.');
+  const store = config.supportedStores.find((candidate) => candidate.origin === parsed.origin);
+  if (!store) throw new Error('This store is not registered. Only verified merchant APIs can be connected.');
+  return { store, normalizedUrl: parsed.origin };
+}
+
+export async function addSite(userId, { siteUrl, spendingCap = 1000, perTransactionCap, autoConfirmThreshold = 0 }) {
+  const { store, normalizedUrl } = getRegisteredStore(siteUrl);
   const cap = parseFiniteNonNegative(spendingCap, 'spendingCap');
   const transactionCap = parseFiniteNonNegative(perTransactionCap ?? cap, 'perTransactionCap');
   const threshold = parseFiniteNonNegative(autoConfirmThreshold, 'autoConfirmThreshold');
@@ -27,6 +31,21 @@ export async function addSite(userId, { siteUrl, spendingCap = 1000, perTransact
     if (error.code === '23505') throw new Error('This site is already connected');
     throw error;
   }
+}
+
+export async function getOrCreateOAuthSite(userId, { siteUrl, spendingCap = 1000, perTransactionCap }) {
+  const { store, normalizedUrl } = getRegisteredStore(siteUrl);
+  if (!store.oauth) throw new Error('This registered store has not enabled OAuth connection yet');
+  const cap = parseFiniteNonNegative(spendingCap, 'spendingCap');
+  const transactionCap = parseFiniteNonNegative(perTransactionCap ?? cap, 'perTransactionCap');
+  if (transactionCap > cap) throw new Error('perTransactionCap cannot exceed spendingCap');
+  const db = getDb();
+  const [site] = await db`
+    insert into connected_sites (user_id, site_url, site_name, adapter_id, merchant_stellar_address, merchant_domain_hash, spending_cap, per_transaction_cap, status)
+    values (${userId}, ${normalizedUrl}, ${store.name}, ${store.id}, ${store.merchantStellarAddress}, ${domainHash(normalizedUrl)}, ${cap}, ${transactionCap}, 'pending_authorization')
+    on conflict (user_id, site_url) do update set status = 'pending_authorization', policy_sync_error = null, updated_at = now()
+    returning *`;
+  return { site, store };
 }
 
 export async function getUserSites(userId) { return getDb()`select * from connected_sites where user_id = ${userId} order by created_at desc`; }

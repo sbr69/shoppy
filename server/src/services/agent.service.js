@@ -6,6 +6,7 @@ import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
 import { executeCustodialPayment } from './payment.service.js';
 import { markIntentState, reserveSpend } from './policy.service.js';
 import { recordWorkflowEvent } from './workflow.service.js';
+import { syncSitePolicy } from './site.service.js';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
 
@@ -62,9 +63,20 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   const purchaseIntent = await findIntent(userId, sessionId, requestedId);
   if (!purchaseIntent) return { type: 'text', content: 'There is no purchase awaiting confirmation in this chat.' };
   if (new Date(purchaseIntent.expires_at).getTime() <= Date.now()) { await markIntentState(purchaseIntent.id, 'expired', { reserved_xlm: 0 }); return { type: 'text', content: 'That selection expired. Please search again.' }; }
-  const [site] = await db`select * from connected_sites where id = ${purchaseIntent.site_id} and user_id = ${userId} and status = 'active'`;
+  let [site] = await db`select * from connected_sites where id = ${purchaseIntent.site_id} and user_id = ${userId} and status = 'active'`;
   if (!site) return { type: 'text', content: 'The selected store is no longer active or authorized.' };
   const product = purchaseIntent.product_json;
+  if (!site.policy_synced_at) {
+    try {
+      await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'policy', status: 'running', detail: 'Synchronizing SpendGuard and merchant trust policy.' });
+      const synced = await syncSitePolicy(userId, googleSub, site.id);
+      site = synced.site;
+      await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'policy', status: 'completed', detail: 'On-chain merchant policy synchronized.' });
+    } catch (error) {
+      await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'policy', status: 'failed', detail: error.message });
+      return { type: 'purchase_failed', content: `The store is authorized, but its on-chain spending safeguard could not be set up: ${error.message}` };
+    }
+  }
   const adapter = new EcommerceAdapter(site);
   if (purchaseIntent.state === 'selected') {
     try {

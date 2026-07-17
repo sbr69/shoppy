@@ -3,11 +3,14 @@ import Sidebar from './Sidebar';
 import ChatWindow from '../chat/ChatWindow';
 import { OrdersView, StoresView, WalletActivityView } from './WorkspaceViews';
 import api from '../../services/api';
+import ConnectSiteModal from '../settings/ConnectSiteModal';
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState('chat');
   const [sessionId, setSessionId] = useState(null);
+  const [connectStoreOpen, setConnectStoreOpen] = useState(false);
+  const [storeRefreshKey, setStoreRefreshKey] = useState(0);
 
   const startNewChat = async () => {
     setView('chat');
@@ -31,6 +34,8 @@ export default function AppLayout() {
         onNewChat={startNewChat}
         activeSessionId={sessionId}
         onSessionSelect={(id) => { setSessionId(id); setView('chat'); setSidebarOpen(false); }}
+        onConnectStore={() => { setConnectStoreOpen(true); setSidebarOpen(false); }}
+        storeRefreshKey={storeRefreshKey}
       />
       {view === 'chat' && <ChatWindow
         sessionId={sessionId}
@@ -39,7 +44,11 @@ export default function AppLayout() {
       />}
       {view === 'orders' && <OrdersView />}
       {view === 'wallet' && <WalletActivityView />}
-      {view === 'stores' && <StoresView />}
+      {view === 'stores' && <StoresView onConnectStore={() => setConnectStoreOpen(true)} refreshKey={storeRefreshKey} />}
+      <ConnectSiteModal
+        isOpen={connectStoreOpen}
+        onClose={() => { setConnectStoreOpen(false); setStoreRefreshKey((value) => value + 1); }}
+      />
     </div>
   );
 }

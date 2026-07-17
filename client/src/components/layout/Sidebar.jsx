@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import api from '../../services/api';
-import ConnectSiteModal from '../settings/ConnectSiteModal';
 import SettingsPanel from '../settings/SettingsPanel';
 import {
   Lightning,
@@ -22,7 +21,7 @@ import {
   ShieldCheck,
 } from '@phosphor-icons/react';
 
-export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect }) {
+export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect, onConnectStore, storeRefreshKey }) {
   const { user, logout } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -32,7 +31,6 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
   const [copied, setCopied] = useState(false);
   const [sites, setSites] = useState([]);
   const [sitesLoading, setSitesLoading] = useState(true);
-  const [showConnectModal, setShowConnectModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sessions, setSessions] = useState([]);
 
@@ -64,7 +62,7 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
     fetchWallet();
     fetchSites();
     api.get('/chat/sessions').then(({ data }) => setSessions(data.sessions || [])).catch(() => setSessions([]));
-  }, [fetchWallet, fetchSites, activeSessionId]);
+  }, [fetchWallet, fetchSites, activeSessionId, storeRefreshKey]);
 
   const selectSession = (id) => onSessionSelect?.(id);
 
@@ -104,11 +102,6 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
     logout();
     navigate('/');
   };
-
-  const handleSiteAdded = (site) => {
-    setSites(prev => [site, ...prev]);
-  };
-
 
   return (
     <>
@@ -216,7 +209,7 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
             )}
             <button
               className="sidebar-add-site"
-              onClick={() => setShowConnectModal(true)}
+              onClick={onConnectStore}
               id="add-site-btn"
             >
               <PlusCircle size={14} weight="bold" />
@@ -237,13 +230,6 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
           </button>
         </div>
       </aside>
-
-      {/* Connect Site Modal */}
-      <ConnectSiteModal
-        isOpen={showConnectModal}
-        onClose={() => setShowConnectModal(false)}
-        onSiteAdded={handleSiteAdded}
-      />
 
       {/* Settings Panel */}
       <SettingsPanel

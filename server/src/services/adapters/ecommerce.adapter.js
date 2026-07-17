@@ -1,5 +1,6 @@
 import { BaseAdapter } from './adapter.base.js';
 import config from '../../config/env.js';
+import { getStoreAccessToken } from '../site-oauth.service.js';
 
 /**
  * Adapter for a registered merchant's explicit agent API. It intentionally
@@ -15,9 +16,10 @@ export class EcommerceAdapter extends BaseAdapter {
   }
 
   async request(path, options = {}) {
+    const token = await getStoreAccessToken(this.site);
     const response = await fetch(new URL(path, `${this.apiBaseUrl}/`), {
       ...options,
-      headers: { Accept: 'application/json', ...(options.headers || {}) },
+      headers: { Accept: 'application/json', Authorization: `${token.tokenType || 'Bearer'} ${token.accessToken}`, ...(options.headers || {}) },
       signal: AbortSignal.timeout(10_000),
       redirect: 'error',
     });

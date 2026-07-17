@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import api from '../../services/api';
-import { LinkSimple, X } from '@phosphor-icons/react';
+import { X } from '@phosphor-icons/react';
 
-export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
+export default function ConnectSiteModal({ isOpen, onClose }) {
   const [siteUrl, setSiteUrl] = useState('');
   const [spendingCap, setSpendingCap] = useState(1000);
   const [loading, setLoading] = useState(false);
@@ -13,20 +13,17 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
     setError('');
 
     if (!siteUrl.trim()) {
-      setError('Please enter the registered store URL.');
+      setError('Enter the URL of the store you want to authorize.');
       return;
     }
 
     try {
       setLoading(true);
-      const { data } = await api.post('/sites', {
+      const { data } = await api.post('/sites/oauth/start', {
         siteUrl: siteUrl.trim(),
         spendingCap,
       });
-      onSiteAdded(data.site);
-      setSiteUrl('');
-      setSpendingCap(1000);
-      onClose();
+      window.location.assign(data.authorizationUrl);
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to connect site';
       setError(msg);
@@ -59,7 +56,7 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
               onChange={(e) => setSiteUrl(e.target.value)}
               autoFocus
             />
-            <span className="form-hint">The e-commerce website URL to connect</span>
+            <span className="form-hint">You will sign in on that store, then return here automatically.</span>
           </div>
 
           <div className="form-group">
@@ -79,7 +76,7 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
             <span className="form-hint">Maximum amount the agent can spend per day on this store</span>
           </div>
 
-          <p className="form-hint">Every exact checkout requires a fresh passkey approval. Spending caps limit the contract policy; they never enable automatic payment.</p>
+          <p className="form-hint">JarvisPayz never sees your store password. The store grants a limited OAuth connection for search and checkout.</p>
 
           {error && (
             <div className="form-error">{error}</div>
@@ -98,10 +95,7 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
               {loading ? (
                 <><span className="spinner" /> Connecting...</>
               ) : (
-                <>
-                  <LinkSimple size={14} weight="bold" />
-                  Connect Store
-                </>
+                'Connect'
               )}
             </button>
           </div>

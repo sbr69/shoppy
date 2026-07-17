@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { addSite, getUserSites, updateSite, removeSite, syncSitePolicy } from '../services/site.service.js';
+import { completeStoreOAuth, startStoreOAuth } from '../services/site-oauth.service.js';
 
 const router = Router();
 
@@ -57,6 +58,25 @@ router.patch('/:id', authenticate, async (req, res) => {
     }
     console.error('❌ Site update error:', err.message);
     res.status(500).json({ error: 'Failed to update site' });
+  }
+});
+
+router.post('/oauth/start', authenticate, async (req, res) => {
+  try {
+    res.json(await startStoreOAuth(req.user.userId, req.body || {}));
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// The merchant redirects the browser here after its own sign-in and consent.
+router.get('/oauth/callback', async (req, res) => {
+  try {
+    const result = await completeStoreOAuth({ code: req.query.code, state: req.query.state, error: req.query.error, errorDescription: req.query.error_description });
+    res.redirect(303, result.redirectUrl);
+  } catch (error) {
+    console.error('Store OAuth callback failed:', error.message);
+    res.redirect(303, `${process.env.CLIENT_URL || 'http://localhost:5173'}/dashboard?storeConnection=failed`);
   }
 });
 

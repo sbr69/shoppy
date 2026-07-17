@@ -19,7 +19,18 @@ function parseSupportedStores(value) {
       }
       const origin = new URL(store.origin).origin;
       const apiBaseUrl = new URL(store.apiBaseUrl).origin;
-      return { ...store, origin, apiBaseUrl };
+      let oauth = null;
+      if (store.oauth) {
+        if (!store.oauth.authorizationUrl || !store.oauth.tokenUrl || !store.oauth.clientId) throw new Error(`${store.id}.oauth needs authorizationUrl, tokenUrl, and clientId`);
+        oauth = {
+          authorizationUrl: new URL(store.oauth.authorizationUrl).toString(),
+          tokenUrl: new URL(store.oauth.tokenUrl).toString(),
+          clientId: String(store.oauth.clientId),
+          clientSecret: store.oauth.clientSecret ? String(store.oauth.clientSecret) : null,
+          scopes: Array.isArray(store.oauth.scopes) ? store.oauth.scopes.map(String) : [],
+        };
+      }
+      return { ...store, origin, apiBaseUrl, oauth };
     });
   } catch (error) {
     throw new Error(`SUPPORTED_STORES_JSON is invalid: ${error.message}`);
@@ -30,16 +41,13 @@ const nodeEnv = process.env.NODE_ENV || 'development';
 const jwtSecret = requireProductionSecret('JWT_SECRET', process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production', 'dev-jwt-secret-change-in-production');
 const masterSecret = requireProductionSecret('MASTER_SECRET', process.env.MASTER_SECRET || 'dev-master-secret-change-in-production', 'dev-master-secret-change-in-production');
 const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-let defaultPasskeyRpId;
-try {
-  defaultPasskeyRpId = new URL(clientUrl).hostname;
-} catch {
-  throw new Error('CLIENT_URL must be a valid origin');
-}
+const serverPublicUrl = process.env.SERVER_PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
+try { new URL(clientUrl); } catch { throw new Error('CLIENT_URL must be a valid origin'); }
 
 const config = {
   port: process.env.PORT || 3001,
   clientUrl,
+  serverPublicUrl: new URL(serverPublicUrl).origin,
   nodeEnv,
 
   // Gemini API
@@ -52,8 +60,7 @@ const config = {
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30m',
 
-  // Encryption — used only for the backend's constrained agent signer. Owner
-  // wallet secrets are passkey-encrypted in the browser and are never sent here.
+  // Encryption for server-custodial signing material and merchant OAuth tokens.
   masterSecret,
   encryptionKeyVersion: 1,
 
@@ -72,12 +79,6 @@ const config = {
   spendGuardContractId: process.env.SPENDGUARD_CONTRACT_ID || '',
   settlementTokenContractId: process.env.SETTLEMENT_TOKEN_CONTRACT_ID || '',
 
-  // WebAuthn passkey vault. The RP ID must be the hostname of the browser
-  // origin (or a registrable parent domain in production).
-  passkeyRpId: process.env.PASSKEY_RP_ID || defaultPasskeyRpId,
-  passkeyOrigin: process.env.PASSKEY_ORIGIN || clientUrl,
-  passkeyRpName: process.env.PASSKEY_RP_NAME || 'JarvisPayz',
-
   // A store must be explicitly registered before the agent can access it.
   // This intentionally replaces arbitrary URL scraping for purchase flows.
   supportedStores: parseSupportedStores(process.env.SUPPORTED_STORES_JSON),
@@ -90,7 +91,7 @@ if (nodeEnv === 'production') {
   for (const [name, value] of Object.entries({ SUPABASE_DB_URL: config.supabaseDbUrl, TRUSTLIST_CONTRACT_ID: config.trustListContractId, SPENDGUARD_CONTRACT_ID: config.spendGuardContractId, SETTLEMENT_TOKEN_CONTRACT_ID: config.settlementTokenContractId })) {
     if (!value) throw new Error(`${name} is required in production`);
   }
-  if (!config.passkeyOrigin.startsWith('https://')) throw new Error('PASSKEY_ORIGIN must use HTTPS in production');
+  if (!config.serverPublicUrl.startsWith('https://')) throw new Error('SERVER_PUBLIC_URL must use HTTPS in production');
 }
 
 export default config;
