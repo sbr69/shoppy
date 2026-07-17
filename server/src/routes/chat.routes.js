@@ -20,7 +20,7 @@ router.post('/message', authenticate, async (req, res) => {
     const session = await getOrCreateSession(req.user.userId);
 
     // Process through the agent
-    const response = await processMessage(req.user.userId, session.id, cleanMessage);
+    const response = await processMessage(req.user.userId, session.id, cleanMessage, req.user.googleSub);
 
     res.json({
       sessionId: session.id,

@@ -197,3 +197,11 @@ export async function submitGuardedSpend({ preparedTransactionXdr, expectedAutho
   }
   return { txHash: sent.hash, rpcStatus: sent.status, ...(await awaitSubmittedTransaction(server, sent)) };
 }
+
+/** Custodial owner authorization, invoked only after application confirmation. */
+export async function submitCustodialGuardedSpend({ ownerKeypair, ownerPublicKey, agentKeypair, merchant, domainHashHex, amountXlm, intentHashHex, receiptHash }) {
+  const prepared = await prepareGuardedSpend({ ownerPublicKey, agentPublicKey: agentKeypair.publicKey(), merchant, domainHashHex, amountXlm, intentHashHex, receiptHash });
+  const entry = StellarSdk.xdr.SorobanAuthorizationEntry.fromXDR(prepared.authorizationEntryXdr, 'base64');
+  const signed = await StellarSdk.authorizeEntry(entry, ownerKeypair, prepared.validUntilLedgerSeq, config.stellarNetworkPassphrase);
+  return submitGuardedSpend({ preparedTransactionXdr: prepared.transactionXdr, expectedAuthorizationEntryXdr: prepared.authorizationEntryXdr, signedAuthorizationEntryXdr: signed.toXDR('base64'), ownerPublicKey, agentKeypair, validUntilLedgerSeq: prepared.validUntilLedgerSeq });
+}

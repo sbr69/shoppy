@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
-import { ensureAgentWalletForUser, ensureOwnerWalletRecord } from './wallet.service.js';
+import { ensureAgentWalletForUser, ensureCustodialWalletForUser } from './wallet.service.js';
 
 /**
  * Verify a Google ID token and return the payload.
@@ -66,7 +66,7 @@ export async function loginWithGoogle(idToken) {
       values (${googleSub}, ${email}, ${name || email}, ${picture || null}) returning *`;
     try {
       await Promise.all([
-        ensureOwnerWalletRecord(createdUser.id),
+        ensureCustodialWalletForUser(createdUser.id, googleSub),
         ensureAgentWalletForUser(createdUser.id, googleSub),
       ]);
     } catch (error) {
@@ -78,7 +78,7 @@ export async function loginWithGoogle(idToken) {
     console.log(`🆕 New user created: ${email} (${createdUser.id})`);
   } else {
     await Promise.all([
-      ensureOwnerWalletRecord(user.id),
+      ensureCustodialWalletForUser(user.id, googleSub),
       ensureAgentWalletForUser(user.id, googleSub),
     ]);
     console.log(`👤 Returning user: ${email}`);

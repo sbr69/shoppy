@@ -4,8 +4,8 @@ import getDb from '../db/database.js';
 import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
 import { buildReceiptMemo } from './receipt.service.js';
 import { markIntentState } from './policy.service.js';
-import { prepareGuardedSpend, submitGuardedSpend } from './soroban.service.js';
-import { getAgentKeypairForSigning, getAgentWalletByUserId, getWalletByUserId } from './wallet.service.js';
+import { prepareGuardedSpend, submitGuardedSpend, submitCustodialGuardedSpend } from './soroban.service.js';
+import { getAgentKeypairForSigning, getAgentWalletByUserId, getOwnerKeypairForSigning, getWalletByUserId } from './wallet.service.js';
 
 function receiptFor(purchaseIntent, site, product) {
   return {
@@ -170,4 +170,19 @@ export async function submitPurchaseApproval(userId, googleSub, approvalId, sign
 
 export async function getPurchaseHistory(userId) {
   return getDb()`select p.*, cs.site_name from purchases p left join connected_sites cs on p.site_id = cs.id where p.user_id = ${userId} order by p.created_at desc`;
+}
+
+export async function executeCustodialPayment(userId, googleSub, purchaseIntent, site, product) {
+  const amount = Number(purchaseIntent.price_xlm);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid verified payment amount');
+  const [wallet, ownerKeypair, agentKeypair] = await Promise.all([
+    getWalletByUserId(userId), getOwnerKeypairForSigning(userId, googleSub), getAgentKeypairForSigning(userId, googleSub),
+  ]);
+  if (!wallet?.public_key || wallet.status !== 'active') throw new Error('Custodial wallet is unavailable');
+  const receiptData = receiptFor(purchaseIntent, site, product);
+  const receiptHash = buildReceiptMemo(receiptData);
+  const submitted = await submitCustodialGuardedSpend({ ownerKeypair, ownerPublicKey: wallet.public_key, agentKeypair, merchant: site.merchant_stellar_address, domainHashHex: site.merchant_domain_hash, amountXlm: amount, intentHashHex: createHash('sha256').update(purchaseIntent.id).digest('hex'), receiptHash });
+  const [purchase] = await getDb()`insert into purchases (user_id, site_id, purchase_intent_id, product_name, product_url, product_image, price_xlm, stellar_tx_hash, receipt_memo_hash, status) values (${userId}, ${site.id}, ${purchaseIntent.id}, ${product.name}, ${product.url || null}, ${product.image || null}, ${amount}, ${submitted.txHash}, ${receiptHash.toString('hex')}, ${submitted.final ? 'confirmed' : 'pending'}) returning *`;
+  await markIntentState(purchaseIntent.id, submitted.final ? 'payment_confirmed' : 'payment_submitted', { policy_tx_hash: submitted.txHash });
+  return { success: submitted.final, purchaseId: purchase.id, txHash: submitted.txHash, priceXlm: amount, receiptData, memoHash: receiptHash.toString('hex') };
 }

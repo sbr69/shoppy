@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import api from '../../services/api';
-import { Storefront, Pencil, Trash, ShieldCheck } from '@phosphor-icons/react';
-import { submitPasskeyOwnerAction } from '../../services/passkeyVault';
+import { Storefront, Pencil, Trash } from '@phosphor-icons/react';
 
 export default function SiteCard({ site, onUpdate, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [cap, setCap] = useState(site.spending_cap);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const [syncingPolicy, setSyncingPolicy] = useState(false);
-  const [policyNotice, setPolicyNotice] = useState('');
 
   const handleSaveCap = async () => {
     try {
@@ -47,18 +44,6 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
     }
   };
 
-  const handleSyncPolicy = async () => {
-    try {
-      setSyncingPolicy(true);
-      setPolicyNotice('');
-      const result = await submitPasskeyOwnerAction({ actionType: 'set_trust_rule', siteId: site.id });
-      setPolicyNotice(`TrustList rule submitted: ${result.txHash.slice(0, 10)}…`);
-    } catch (error) {
-      setPolicyNotice(error.response?.data?.error || error.message || 'Could not sync policy');
-    } finally {
-      setSyncingPolicy(false);
-    }
-  };
 
   return (
     <div className={`site-card glass-card ${site.status === 'paused' ? 'paused' : ''}`}>
@@ -116,9 +101,6 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
       </div>
 
       <div className="site-card-footer">
-        <button className="btn btn-ghost" onClick={handleSyncPolicy} disabled={syncingPolicy} title="Passkey-sign this exact TrustList rule">
-          {syncingPolicy ? 'Syncing policy...' : <><ShieldCheck size={14} /> Sync on-chain rule</>}
-        </button>
         <button
           className="btn btn-ghost site-remove-btn"
           onClick={handleRemove}
@@ -134,7 +116,6 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
           )}
         </button>
       </div>
-      {policyNotice && <div className="form-hint" style={{ margin: '0 var(--space-4) var(--space-3)' }}>{policyNotice}</div>}
     </div>
   );
 }

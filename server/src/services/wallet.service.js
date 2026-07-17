@@ -46,6 +46,23 @@ export async function ensureOwnerWalletRecord(userId) {
   return wallet;
 }
 
+/** Create the user-visible custodial wallet only when none exists. */
+export async function ensureCustodialWalletForUser(userId, googleSub) {
+  const db = getDb();
+  const [existing] = await db`select public_key, encrypted_secret, status from wallets where user_id = ${userId}`;
+  if (existing?.public_key && existing.encrypted_secret && existing.status === 'active') return { publicKey: existing.public_key };
+  const owner = StellarSdk.Keypair.random();
+  const ciphertext = encodedCiphertext(owner.secret(), `owner-wallet:${googleSub}`);
+  const [wallet] = await db`
+    insert into wallets (user_id, public_key, encrypted_secret, iv, auth_tag, key_version, custody_mode, status, provisioned_at)
+    values (${userId}, ${owner.publicKey()}, ${ciphertext.encrypted}, ${ciphertext.iv}, ${ciphertext.authTag}, ${config.encryptionKeyVersion}, 'server_custody', 'active', now())
+    on conflict (user_id) do update set public_key = excluded.public_key, encrypted_secret = excluded.encrypted_secret,
+      iv = excluded.iv, auth_tag = excluded.auth_tag, key_version = excluded.key_version, custody_mode = 'server_custody',
+      status = 'active', provisioned_at = now()
+    returning public_key`;
+  return { publicKey: wallet.public_key };
+}
+
 export async function getWalletByUserId(userId) {
   const [wallet] = await getDb()`
     select public_key, status, custody_mode, passkey_credential_id, provisioned_at, created_at
@@ -109,5 +126,13 @@ export async function getAgentKeypairForSigning(userId, googleSub) {
     Buffer.from(wallet.auth_tag, 'base64'),
     agentScope(googleSub),
   );
+  return StellarSdk.Keypair.fromSecret(secretKey);
+}
+
+export async function getOwnerKeypairForSigning(userId, googleSub) {
+  const [wallet] = await getDb()`select encrypted_secret, iv, auth_tag, key_version, status from wallets where user_id = ${userId}`;
+  if (!wallet?.encrypted_secret || wallet.status !== 'active') throw new Error('Custodial wallet is not active');
+  if (wallet.key_version !== config.encryptionKeyVersion) throw new Error('Custodial wallet key requires rotation before use');
+  const secretKey = decrypt(Buffer.from(wallet.encrypted_secret, 'base64'), Buffer.from(wallet.iv, 'base64'), Buffer.from(wallet.auth_tag, 'base64'), `owner-wallet:${googleSub}`);
   return StellarSdk.Keypair.fromSecret(secretKey);
 }
