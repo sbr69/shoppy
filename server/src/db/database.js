@@ -13,7 +13,7 @@ export function getDb() {
       idle_timeout: 20,
       connect_timeout: 10,
       prepare: false,
-      ssl: config.nodeEnv === 'production' ? 'require' : undefined,
+      ssl: config.supabaseDbUrl.includes('supabase.co') ? 'require' : undefined,
     });
   }
   return sql;

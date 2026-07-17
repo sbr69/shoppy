@@ -1,7 +1,7 @@
 #![no_std]
 
 use jarvis_policy_interface::TrustListClient;
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, token, Address, BytesN, Env};
+use soroban_sdk::{contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, token, Address, BytesN, Env};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -11,6 +11,35 @@ pub enum SpendGuardError { AlreadyInitialized = 1, NotInitialized = 2, Unauthori
 #[contracttype]
 #[derive(Clone)]
 enum DataKey { Initialized, Token, TrustList, Agent(Address), Escrow(Address), Spent(Address, BytesN<32>, u64), Used(Address, BytesN<32>) }
+
+#[contractevent(topics = ["agent_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentSetEvent {
+    #[topic]
+    pub owner: Address,
+    pub agent: Address,
+}
+
+#[contractevent(topics = ["deposit"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DepositEvent {
+    #[topic]
+    pub owner: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["purchased"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PurchaseAttestedEvent {
+    #[topic]
+    pub owner: Address,
+    #[topic]
+    pub intent_hash: BytesN<32>,
+    pub domain_hash: BytesN<32>,
+    pub merchant: Address,
+    pub amount: i128,
+    pub receipt_hash: BytesN<32>,
+}
 
 #[contract]
 pub struct SpendGuard;
@@ -26,14 +55,14 @@ impl SpendGuard {
     pub fn set_agent(env: Env, owner: Address, agent: Address) {
         Self::ready(&env); owner.require_auth();
         env.storage().persistent().set(&DataKey::Agent(owner.clone()), &agent);
-        env.events().publish((symbol_short!("agent_set"), owner), agent);
+        AgentSetEvent { owner, agent }.publish(&env);
     }
     pub fn deposit(env: Env, owner: Address, amount: i128) {
         Self::ready(&env); owner.require_auth(); Self::positive(&env, amount);
         token::Client::new(&env, &Self::token(&env)).transfer(&owner, &env.current_contract_address(), &amount);
         let balance = Self::balance(&env, &owner) + amount;
         env.storage().persistent().set(&DataKey::Escrow(owner.clone()), &balance);
-        env.events().publish((symbol_short!("deposit"), owner), amount);
+        DepositEvent { owner, amount }.publish(&env);
     }
     pub fn withdraw(env: Env, owner: Address, recipient: Address, amount: i128) {
         Self::ready(&env); owner.require_auth(); Self::positive(&env, amount);
@@ -60,7 +89,7 @@ impl SpendGuard {
         env.storage().persistent().set(&DataKey::Escrow(owner.clone()), &(balance - amount));
         env.storage().persistent().set(&key, &(spent + amount));
         env.storage().persistent().set(&DataKey::Used(owner.clone(), intent_hash.clone()), &true);
-        env.events().publish((symbol_short!("purchased"), owner, intent_hash), (domain_hash, merchant, amount, receipt_hash));
+        PurchaseAttestedEvent { owner, intent_hash, domain_hash, merchant, amount, receipt_hash }.publish(&env);
     }
     pub fn escrow_balance(env: Env, owner: Address) -> i128 { Self::balance(&env, &owner) }
     fn ready(env: &Env) { if !env.storage().instance().has(&DataKey::Initialized) { panic_with_error!(env, SpendGuardError::NotInitialized); } }

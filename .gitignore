@@ -10,6 +10,9 @@ target/
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
 # Database
 *.db
@@ -35,6 +38,10 @@ npm-debug.log*
 # Stellar keys (NEVER commit)
 *.secret
 *.keypair
+*.key
+*.pem
+*.p12
+*.keystore
 
 # Misc
 .cache/
