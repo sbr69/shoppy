@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildReceiptMemo, verifyReceiptMemo } from '../src/services/receipt.service.js';
 import { parseFiniteNonNegative, validateChatMessage, validateSiteUpdate } from '../src/services/validation.service.js';
+import { xlmToStroops } from '../src/services/soroban.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -28,4 +29,11 @@ test('request validation rejects unsafe numeric and message inputs', () => {
   assert.deepEqual(validateSiteUpdate({ spendingCap: '10', autoConfirmThreshold: 0, status: 'paused' }), {
     spendingCap: 10, autoConfirmThreshold: 0, status: 'paused',
   });
+});
+
+test('XLM conversion retains exact seven-decimal stroop precision', () => {
+  assert.equal(xlmToStroops('1.0000001'), 10_000_001n);
+  assert.equal(xlmToStroops(2), 20_000_000n);
+  assert.throws(() => xlmToStroops('0'));
+  assert.throws(() => xlmToStroops('1.00000001'));
 });

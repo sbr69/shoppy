@@ -6,8 +6,8 @@ const KEY_LENGTH = 32; // 256 bits
 const IV_LENGTH = 16;  // 128 bits
 
 /**
- * Derive a per-user encryption key from the master secret + user's Google sub ID.
- * This means each user's private key is encrypted with a unique derived key.
+ * Derive a scoped backend key from the master secret. This must only be used
+ * for backend-owned, constrained agent signers; never for an owner wallet.
  */
 function deriveKey(googleSub) {
   return createHmac('sha256', config.masterSecret)
@@ -19,8 +19,8 @@ function deriveKey(googleSub) {
  * Encrypt a Stellar secret key.
  * Returns { encrypted, iv, authTag } as Buffers.
  */
-export function encrypt(plaintext, googleSub) {
-  const key = deriveKey(googleSub);
+export function encrypt(plaintext, keyScope) {
+  const key = deriveKey(keyScope);
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
 
@@ -40,8 +40,8 @@ export function encrypt(plaintext, googleSub) {
  * Decrypt a Stellar secret key.
  * Returns the plaintext string.
  */
-export function decrypt(encryptedData, iv, authTag, googleSub) {
-  const key = deriveKey(googleSub);
+export function decrypt(encryptedData, iv, authTag, keyScope) {
+  const key = deriveKey(keyScope);
   const decipher = createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
 

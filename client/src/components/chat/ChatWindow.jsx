@@ -6,6 +6,7 @@ import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
 import ReceiptCard from './ReceiptCard';
 import TypingIndicator from './TypingIndicator';
+import ApprovalCard from './ApprovalCard';
 import { List, Lightning, ShoppingBagOpen, PaperPlaneRight } from '@phosphor-icons/react';
 
 const SUGGESTIONS = [
@@ -45,7 +46,8 @@ export default function ChatWindow({ onToggleSidebar }) {
       if (data.messages) {
         const enriched = data.messages.map(msg => {
           if (msg.role === 'agent' && msg.metadata) {
-            if (msg.metadata.purchase?.txHash) return { ...msg, type: 'purchase_success' };
+            if (msg.metadata.purchase?.txHash) return { ...msg, type: msg.metadata.purchase.pendingMerchantConfirmation ? 'purchase_pending' : 'purchase_success' };
+            if (msg.metadata.approval) return { ...msg, type: 'approval_required', historical: true };
             if (msg.metadata.error && msg.metadata.product) return { ...msg, type: 'purchase_failed' };
             if (msg.metadata.product && msg.metadata.reasoning) return { ...msg, type: 'product_suggestion', historical: true };
             if (msg.metadata.status === 'pending_payment') return { ...msg, type: 'purchase_pending' };
@@ -126,6 +128,17 @@ export default function ChatWindow({ onToggleSidebar }) {
     sendMessage('Cancel purchase');
   };
 
+  const handleApprovalComplete = (purchase) => {
+    setMessages(prev => [...prev, {
+      id: `purchase-${purchase.purchaseId || purchase.txHash}`,
+      role: 'agent',
+      type: purchase.pendingMerchantConfirmation ? 'purchase_pending' : 'purchase_success',
+      content: purchase.pendingMerchantConfirmation ? 'Payment was submitted to SpendGuard. Merchant confirmation is pending; do not approve it again.' : `Purchase complete. The merchant confirmed order ${purchase.orderId}.`,
+      metadata: { product: purchase.product, purchase },
+      created_at: new Date().toISOString(),
+    }]);
+  };
+
   const handleSuggestion = (text) => {
     sendMessage(text);
   };
@@ -161,6 +174,15 @@ export default function ChatWindow({ onToggleSidebar }) {
               purchase={msg.metadata.purchase}
             />
           </div>
+        </div>
+      );
+    }
+
+    if (msg.type === 'approval_required' && msg.metadata?.approval) {
+      return (
+        <div key={msg.id || index}>
+          <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
+          <ApprovalCard approval={msg.metadata.approval} product={msg.metadata.product} historical={msg.historical} onComplete={handleApprovalComplete} />
         </div>
       );
     }

@@ -5,7 +5,6 @@ import { LinkSimple, X } from '@phosphor-icons/react';
 export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
   const [siteUrl, setSiteUrl] = useState('');
   const [spendingCap, setSpendingCap] = useState(1000);
-  const [autoConfirmThreshold, setAutoConfirmThreshold] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,12 +22,10 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
       const { data } = await api.post('/sites', {
         siteUrl: siteUrl.trim(),
         spendingCap,
-        autoConfirmThreshold,
       });
       onSiteAdded(data.site);
       setSiteUrl('');
       setSpendingCap(1000);
-      setAutoConfirmThreshold(0);
       onClose();
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to connect site';
@@ -82,19 +79,7 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
             <span className="form-hint">Maximum amount the agent can spend per day on this store</span>
           </div>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="auto-confirm-threshold">Auto-confirm Threshold (XLM)</label>
-            <input
-              id="auto-confirm-threshold"
-              type="number"
-              className="form-input"
-              value={autoConfirmThreshold}
-              onChange={(e) => setAutoConfirmThreshold(parseFloat(e.target.value) || 0)}
-              min="0"
-              step="1"
-            />
-            <span className="form-hint">Set to 0 to always require approval. Exact checkout totals still need confirmation.</span>
-          </div>
+          <p className="form-hint">Every exact checkout requires a fresh passkey approval. Spending caps limit the contract policy; they never enable automatic payment.</p>
 
           {error && (
             <div className="form-error">{error}</div>

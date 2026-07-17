@@ -29,10 +29,17 @@ function parseSupportedStores(value) {
 const nodeEnv = process.env.NODE_ENV || 'development';
 const jwtSecret = requireProductionSecret('JWT_SECRET', process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production', 'dev-jwt-secret-change-in-production');
 const masterSecret = requireProductionSecret('MASTER_SECRET', process.env.MASTER_SECRET || 'dev-master-secret-change-in-production', 'dev-master-secret-change-in-production');
+const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+let defaultPasskeyRpId;
+try {
+  defaultPasskeyRpId = new URL(clientUrl).hostname;
+} catch {
+  throw new Error('CLIENT_URL must be a valid origin');
+}
 
 const config = {
   port: process.env.PORT || 3001,
-  clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
+  clientUrl,
   nodeEnv,
 
   // Gemini API
@@ -45,7 +52,8 @@ const config = {
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30m',
 
-  // Encryption — master secret for deriving per-user encryption keys
+  // Encryption — used only for the backend's constrained agent signer. Owner
+  // wallet secrets are passkey-encrypted in the browser and are never sent here.
   masterSecret,
   encryptionKeyVersion: 1,
 
@@ -64,6 +72,12 @@ const config = {
   spendGuardContractId: process.env.SPENDGUARD_CONTRACT_ID || '',
   settlementTokenContractId: process.env.SETTLEMENT_TOKEN_CONTRACT_ID || '',
 
+  // WebAuthn passkey vault. The RP ID must be the hostname of the browser
+  // origin (or a registrable parent domain in production).
+  passkeyRpId: process.env.PASSKEY_RP_ID || defaultPasskeyRpId,
+  passkeyOrigin: process.env.PASSKEY_ORIGIN || clientUrl,
+  passkeyRpName: process.env.PASSKEY_RP_NAME || 'JarvisPayz',
+
   // A store must be explicitly registered before the agent can access it.
   // This intentionally replaces arbitrary URL scraping for purchase flows.
   supportedStores: parseSupportedStores(process.env.SUPPORTED_STORES_JSON),
@@ -76,6 +90,7 @@ if (nodeEnv === 'production') {
   for (const [name, value] of Object.entries({ SUPABASE_DB_URL: config.supabaseDbUrl, TRUSTLIST_CONTRACT_ID: config.trustListContractId, SPENDGUARD_CONTRACT_ID: config.spendGuardContractId, SETTLEMENT_TOKEN_CONTRACT_ID: config.settlementTokenContractId })) {
     if (!value) throw new Error(`${name} is required in production`);
   }
+  if (!config.passkeyOrigin.startsWith('https://')) throw new Error('PASSKEY_ORIGIN must use HTTPS in production');
 }
 
 export default config;

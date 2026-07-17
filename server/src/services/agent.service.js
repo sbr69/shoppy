@@ -3,18 +3,18 @@ import getDb from '../db/database.js';
 import { parseIntent } from './intent.service.js';
 import { rankProducts } from './product.service.js';
 import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
-import { executePayment } from './payment.service.js';
+import { preparePurchaseApproval } from './payment.service.js';
 import { markIntentState, reserveSpend } from './policy.service.js';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
 
-export async function processMessage(userId, sessionId, message, googleSub) {
+export async function processMessage(userId, sessionId, message) {
   const db = getDb();
   await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
   const intent = await parseIntent(message);
   let response;
   if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
-  else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
+  else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, intent.purchaseIntentId);
   else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
   else if (intent.action === 'greeting') response = { type: 'text', content: 'Hi! Tell me what you want to buy and I will search your authorized stores.' };
   else response = { type: 'text', content: 'I can search authorized stores, prepare an order, then require your confirmation before a guarded on-chain payment.' };
@@ -46,7 +46,7 @@ async function findIntent(userId, sessionId, requestedId) {
   return intent;
 }
 
-async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
+async function handleConfirmation(userId, sessionId, requestedId) {
   const db = getDb();
   const purchaseIntent = await findIntent(userId, sessionId, requestedId);
   if (!purchaseIntent) return { type: 'text', content: 'There is no purchase awaiting confirmation in this chat.' };
@@ -63,24 +63,35 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
       return { type: 'purchase_ready', content: `The merchant reserved order ${checkout.orderId}. Final payment is ${Number(checkout.xlmAmount).toFixed(7)} XLM. Reply “buy it” once more to approve this exact amount.`, metadata: { product, purchaseIntentId: purchaseIntent.id, checkout } };
     } catch (error) { return { type: 'purchase_failed', content: `I could not prepare a verified merchant order: ${error.message}`, metadata: { product } }; }
   }
+  if (purchaseIntent.state === 'approval_required') {
+    return { type: 'approval_required', content: 'This exact checkout is awaiting your passkey approval. Approve it from the card below or cancel it.', metadata: { product } };
+  }
   try {
     const reserved = await reserveSpend(purchaseIntent.id, userId, site.id);
-    const result = await executePayment(userId, googleSub, reserved, site, product);
-    try {
-      const confirmation = await adapter.confirmPayment(reserved.merchant_order_id, result.txHash, reserved.idempotency_key);
-      await db`update purchases set status = 'confirmed', confirmed_at = now() where id = ${result.purchaseId}`;
-      await markIntentState(purchaseIntent.id, 'order_confirmed', { reserved_xlm: 0 });
-      return { type: 'purchase_success', content: `Purchase complete. The merchant confirmed order ${confirmation.orderId || reserved.merchant_order_id}.`, metadata: { product, purchase: { ...result, orderId: confirmation.orderId || reserved.merchant_order_id, timestamp: new Date().toISOString() } } };
-    } catch (error) { return { type: 'purchase_pending', content: `Your SpendGuard payment was submitted, but the merchant has not confirmed it yet. Do not pay again.`, metadata: { product, purchase: result } }; }
+    const approval = await preparePurchaseApproval(userId, reserved, site, product);
+    return {
+      type: 'approval_required',
+      content: `Review the exact payment for order ${reserved.merchant_order_id}. Your passkey will unlock the local wallet only long enough to authorize ${Number(reserved.price_xlm).toFixed(7)} XLM.`,
+      metadata: { product, approval },
+    };
   } catch (error) {
-    if (error.indeterminate) return { type: 'purchase_pending', content: 'Payment submission status is unknown. The intent is locked to prevent a duplicate payment.', metadata: { product } };
     await markIntentState(purchaseIntent.id, 'failed', { reserved_xlm: 0 });
-    return { type: 'purchase_failed', content: `Payment was not completed: ${error.message}`, metadata: { product } };
+    return { type: 'purchase_failed', content: `I could not prepare a passkey approval: ${error.message}`, metadata: { product, error: error.message } };
   }
 }
 
 async function handleCancel(userId, sessionId) {
-  await getDb()`update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now() where user_id = ${userId} and session_id = ${sessionId} and state in ('selected','confirmed')`;
+  const db = getDb();
+  await db.begin(async (tx) => {
+    const intents = await tx`
+      update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now()
+      where user_id = ${userId} and session_id = ${sessionId}
+        and state in ('selected', 'confirmed', 'policy_authorized', 'approval_required', 'approval_authorized')
+      returning id`;
+    if (intents.length) {
+      await tx`update purchase_approvals set state = 'expired' where user_id = ${userId} and purchase_intent_id in ${tx(intents.map((intent) => intent.id))} and state in ('prepared', 'authorized')`;
+    }
+  });
   return { type: 'text', content: 'The pending selection was cancelled. No payment was made.' };
 }
 

@@ -15,8 +15,12 @@ import {
   SignOut,
   ArrowSquareOut,
   Copy,
-  Check
+  Check,
+  Fingerprint,
 } from '@phosphor-icons/react';
+import PasskeyVaultModal from '../wallet/PasskeyVaultModal';
+import EscrowDepositModal from '../wallet/EscrowDepositModal';
+import { submitPasskeyOwnerAction } from '../../services/passkeyVault';
 
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
@@ -30,6 +34,9 @@ export default function Sidebar({ isOpen, onClose }) {
   const [sitesLoading, setSitesLoading] = useState(true);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showVaultSetup, setShowVaultSetup] = useState(false);
+  const [configuringAgent, setConfiguringAgent] = useState(false);
+  const [showEscrowDeposit, setShowEscrowDeposit] = useState(false);
 
   const fetchWallet = useCallback(async () => {
     try {
@@ -101,6 +108,23 @@ export default function Sidebar({ isOpen, onClose }) {
     setSites(prev => [site, ...prev]);
   };
 
+  const handleVaultComplete = async () => {
+    await fetchWallet();
+    toast.success('Passkey vault created. Fund it with Friendbot to begin testnet testing.');
+  };
+
+  const handleConfigureAgent = async () => {
+    try {
+      setConfiguringAgent(true);
+      await submitPasskeyOwnerAction({ actionType: 'set_agent' });
+      toast.success('Agent signer authorized on SpendGuard. Sync each connected store rule next.');
+    } catch (error) {
+      toast.error(error.response?.data?.error || error.message || 'Could not authorize agent signer');
+    } finally {
+      setConfiguringAgent(false);
+    }
+  };
+
   return (
     <>
       {/* Mobile overlay */}
@@ -137,54 +161,30 @@ export default function Sidebar({ isOpen, onClose }) {
             </div>
           ) : (
             <div className="sidebar-wallet">
-              <div className="sidebar-wallet-balance">
-                <span className="sidebar-wallet-amount">
-                  {wallet?.funded
-                    ? parseFloat(wallet.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : '0.00'
-                  }
-                </span>
-                <span className="sidebar-wallet-unit">XLM</span>
-              </div>
-              <div
-                className="sidebar-wallet-address"
-                onClick={handleCopy}
-                title="Click to copy full address"
-              >
-                {copied ? (
-                  <span className="copied-text"><Check size={12} weight="bold" /> Copied!</span>
-                ) : (
-                  <>
-                    <span>{truncateAddr(wallet?.publicKey)}</span>
-                    <Copy size={12} />
-                  </>
-                )}
-              </div>
-              <div className="sidebar-wallet-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={handleFund}
-                  disabled={funding}
-                >
-                  {funding ? (
-                    <><span className="spinner" /> Funding...</>
-                  ) : (
-                    <>
-                      <Coins size={14} weight="bold" />
-                      Fund
-                    </>
-                  )}
+              {wallet?.vaultSetupRequired ? (
+                <>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 12 }}>Create your browser-held Stellar wallet with a synced passkey.</div>
+                  <button className="btn btn-primary" onClick={() => setShowVaultSetup(true)} id="sidebar-setup-passkey-btn"><Fingerprint size={14} weight="bold" /> Set up vault</button>
+                </>
+              ) : <>
+                <div className="sidebar-wallet-balance">
+                  <span className="sidebar-wallet-amount">{wallet?.funded ? parseFloat(wallet.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}</span>
+                  <span className="sidebar-wallet-unit">XLM</span>
+                </div>
+                <div className="sidebar-wallet-address" onClick={handleCopy} title="Click to copy full address">
+                  {copied ? <span className="copied-text"><Check size={12} weight="bold" /> Copied!</span> : <><span>{truncateAddr(wallet?.publicKey)}</span><Copy size={12} /></>}
+                </div>
+                <div className="sidebar-wallet-actions">
+                  <button className="btn btn-primary" onClick={handleFund} disabled={funding}>
+                    {funding ? <><span className="spinner" /> Funding...</> : <><Coins size={14} weight="bold" /> Fund</>}
+                  </button>
+                  <a href={wallet?.publicKey ? `https://stellar.expert/explorer/testnet/account/${wallet.publicKey}` : '#'} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Explorer<ArrowSquareOut size={14} /></a>
+                </div>
+                <button className="btn btn-ghost" onClick={handleConfigureAgent} disabled={configuringAgent || !wallet?.funded} style={{ marginTop: 8, width: '100%', fontSize: 'var(--text-xs)' }} title={wallet?.funded ? 'Passkey-sign the constrained agent on SpendGuard' : 'Fund the testnet wallet first'}>
+                  {configuringAgent ? <><span className="spinner" /> Authorizing agent...</> : 'Authorize constrained agent'}
                 </button>
-                <a
-                  href={wallet?.publicKey ? `https://stellar.expert/explorer/testnet/account/${wallet.publicKey}` : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-secondary"
-                >
-                  Explorer
-                  <ArrowSquareOut size={14} />
-                </a>
-              </div>
+                <button className="btn btn-ghost" onClick={() => setShowEscrowDeposit(true)} disabled={!wallet?.funded} style={{ marginTop: 6, width: '100%', fontSize: 'var(--text-xs)' }} title={wallet?.funded ? 'Passkey-sign a test XLM deposit to SpendGuard' : 'Fund the testnet wallet first'}>Deposit to SpendGuard</button>
+              </>}
             </div>
           )}
         </div>
@@ -261,6 +261,8 @@ export default function Sidebar({ isOpen, onClose }) {
         isOpen={showSettings}
         onClose={() => { setShowSettings(false); fetchSites(); }}
       />
+      <PasskeyVaultModal isOpen={showVaultSetup} onClose={() => setShowVaultSetup(false)} onComplete={handleVaultComplete} />
+      <EscrowDepositModal isOpen={showEscrowDeposit} onClose={() => setShowEscrowDeposit(false)} onComplete={(result) => toast.success(`SpendGuard deposit submitted: ${result.txHash.slice(0, 10)}…`)} />
     </>
   );
 }

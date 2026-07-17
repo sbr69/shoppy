@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
-import { createWalletsForUser } from './wallet.service.js';
+import { ensureAgentWalletForUser, ensureOwnerWalletRecord } from './wallet.service.js';
 
 /**
  * Verify a Google ID token and return the payload.
@@ -45,7 +45,7 @@ async function verifyGoogleToken(idToken) {
  * Handle Google login:
  * 1. Verify the Google ID token
  * 2. Find or create the user in DB
- * 3. If new user, create a Stellar wallet
+ * 3. Ensure a passkey-vault placeholder and a constrained agent signer exist
  * 4. Issue a JWT
  */
 export async function loginWithGoogle(idToken) {
@@ -59,20 +59,28 @@ export async function loginWithGoogle(idToken) {
   let [user] = await db`select * from users where google_sub = ${googleSub}`;
 
   if (!user) {
-    // 3. Create new user
+    // 3. Create a user. The owner Stellar key is created only in the browser
+    // after a passkey is registered; the server never generates or sees it.
     const [createdUser] = await db`
       insert into users (google_sub, email, name, avatar_url)
       values (${googleSub}, ${email}, ${name || email}, ${picture || null}) returning *`;
     try {
-      await createWalletsForUser(createdUser.id, googleSub);
+      await Promise.all([
+        ensureOwnerWalletRecord(createdUser.id),
+        ensureAgentWalletForUser(createdUser.id, googleSub),
+      ]);
     } catch (error) {
       await db`delete from users where id = ${createdUser.id}`;
       throw error;
     }
     user = createdUser;
 
-    console.log(`🆕 New user created: ${email} (${userId})`);
+    console.log(`🆕 New user created: ${email} (${createdUser.id})`);
   } else {
+    await Promise.all([
+      ensureOwnerWalletRecord(user.id),
+      ensureAgentWalletForUser(user.id, googleSub),
+    ]);
     console.log(`👤 Returning user: ${email}`);
   }
 

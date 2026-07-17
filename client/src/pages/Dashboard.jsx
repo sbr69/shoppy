@@ -42,7 +42,7 @@ export default function Dashboard() {
             <span>JarvisPayz</span>
           </div>
           <h2>Welcome Back</h2>
-          <p>Sign in with Google to access your AI shopping agent and Stellar wallet.</p>
+          <p>Sign in with Google to access your AI shopping agent and passkey-protected Stellar wallet.</p>
         </div>
 
         <div className="login-card-body">
@@ -71,9 +71,9 @@ export default function Dashboard() {
 
         <div className="login-card-footer">
           <p>
-            Your Stellar wallet is created automatically.
+            Your Stellar wallet stays in your browser.
             <br />
-            No extensions or seed phrases needed.
+            No extensions, server-held keys, or seed phrases needed.
           </p>
         </div>
       </div>

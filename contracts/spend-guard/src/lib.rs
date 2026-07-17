@@ -72,7 +72,10 @@ impl SpendGuard {
         env.storage().persistent().set(&DataKey::Escrow(owner.clone()), &(balance - amount));
     }
     pub fn spend(env: Env, owner: Address, agent: Address, domain_hash: BytesN<32>, merchant: Address, amount: i128, intent_hash: BytesN<32>, receipt_hash: BytesN<32>) {
-        Self::ready(&env); agent.require_auth(); Self::positive(&env, amount);
+        // A constrained agent alone must never be able to spend. Every exact
+        // purchase needs a fresh owner authorization entry as well as the
+        // backend agent signer that is bound to this owner below.
+        Self::ready(&env); owner.require_auth(); agent.require_auth(); Self::positive(&env, amount);
         let configured: Address = env.storage().persistent().get(&DataKey::Agent(owner.clone())).unwrap_or_else(|| panic_with_error!(&env, SpendGuardError::Unauthorized));
         if configured != agent { panic_with_error!(&env, SpendGuardError::Unauthorized); }
         if env.storage().persistent().has(&DataKey::Used(owner.clone(), intent_hash.clone())) { panic_with_error!(&env, SpendGuardError::DuplicateIntent); }

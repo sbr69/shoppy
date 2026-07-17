@@ -20,7 +20,7 @@ router.post('/message', authenticate, async (req, res) => {
     const session = await getOrCreateSession(req.user.userId);
 
     // Process through the agent
-    const response = await processMessage(req.user.userId, session.id, cleanMessage, req.user.googleSub);
+    const response = await processMessage(req.user.userId, session.id, cleanMessage);
 
     res.json({
       sessionId: session.id,
@@ -45,7 +45,7 @@ router.get('/history', authenticate, async (req, res) => {
     // Parse metadata JSON for each message
     const parsed = messages.map(msg => ({
       ...msg,
-      metadata: msg.metadata ? JSON.parse(msg.metadata) : null,
+      metadata: msg.metadata ? (typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata) : null,
     }));
 
     res.json({
