@@ -25,16 +25,16 @@ router.get('/', authenticate, (req, res) => {
  */
 router.post('/', authenticate, (req, res) => {
   try {
-    const { siteUrl, siteName, spendingCap } = req.body;
+    const { siteUrl, spendingCap, autoConfirmThreshold } = req.body;
 
-    if (!siteUrl || !siteName) {
-      return res.status(400).json({ error: 'siteUrl and siteName are required' });
+    if (!siteUrl) {
+      return res.status(400).json({ error: 'siteUrl is required' });
     }
 
-    const site = addSite(req.user.userId, { siteUrl, siteName, spendingCap });
+    const site = addSite(req.user.userId, { siteUrl, spendingCap, autoConfirmThreshold });
     res.status(201).json({ site });
   } catch (err) {
-    if (err.message === 'This site is already connected') {
+    if (['This site is already connected', 'siteUrl must be a valid URL', 'siteUrl must use HTTP or HTTPS', 'This store needs merchant authorization before it can be activated'].includes(err.message) || err.message.startsWith('This store is not supported')) {
       return res.status(409).json({ error: err.message });
     }
     console.error('❌ Site add error:', err.message);

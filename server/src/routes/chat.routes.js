@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { processMessage, getOrCreateSession, getSessionMessages } from '../services/agent.service.js';
+import { validateChatMessage } from '../services/validation.service.js';
 
 const router = Router();
 
@@ -13,15 +14,13 @@ router.post('/message', authenticate, async (req, res) => {
   try {
     const { message } = req.body;
 
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
+    const cleanMessage = validateChatMessage(message);
 
     // Get or create session
     const session = getOrCreateSession(req.user.userId);
 
     // Process through the agent
-    const response = await processMessage(req.user.userId, session.id, message.trim(), req.user.googleSub);
+    const response = await processMessage(req.user.userId, session.id, cleanMessage, req.user.googleSub);
 
     res.json({
       sessionId: session.id,
@@ -29,7 +28,8 @@ router.post('/message', authenticate, async (req, res) => {
     });
   } catch (err) {
     console.error('❌ Chat error:', err.message);
-    res.status(500).json({ error: 'Failed to process message' });
+    const badRequest = err.message.includes('Message');
+    res.status(badRequest ? 400 : 500).json({ error: badRequest ? err.message : 'Failed to process message' });
   }
 });
 

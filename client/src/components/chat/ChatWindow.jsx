@@ -47,7 +47,7 @@ export default function ChatWindow({ onToggleSidebar }) {
           if (msg.role === 'agent' && msg.metadata) {
             if (msg.metadata.purchase?.txHash) return { ...msg, type: 'purchase_success' };
             if (msg.metadata.error && msg.metadata.product) return { ...msg, type: 'purchase_failed' };
-            if (msg.metadata.product && msg.metadata.reasoning) return { ...msg, type: 'product_suggestion' };
+            if (msg.metadata.product && msg.metadata.reasoning) return { ...msg, type: 'product_suggestion', historical: true };
             if (msg.metadata.status === 'pending_payment') return { ...msg, type: 'purchase_pending' };
           }
           return msg;
@@ -109,7 +109,7 @@ export default function ChatWindow({ onToggleSidebar }) {
       setLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, loading]);
+  }, [input, loading, toast]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -118,12 +118,12 @@ export default function ChatWindow({ onToggleSidebar }) {
     }
   };
 
-  const handleConfirmPurchase = () => {
-    sendMessage('Yes, buy it');
+  const handleConfirmPurchase = (purchaseIntentId) => {
+    sendMessage(`Confirm purchase ${purchaseIntentId}`);
   };
 
   const handleSkip = () => {
-    sendMessage('No, skip this');
+    sendMessage('Cancel purchase');
   };
 
   const handleSuggestion = (text) => {
@@ -141,8 +141,9 @@ export default function ChatWindow({ onToggleSidebar }) {
             <ProductCard
               product={msg.metadata.product}
               reasoning={msg.metadata.reasoning}
-              onConfirm={handleConfirmPurchase}
+              onConfirm={() => handleConfirmPurchase(msg.metadata.purchaseIntentId)}
               onSkip={handleSkip}
+              historical={msg.historical}
             />
           </div>
         </div>

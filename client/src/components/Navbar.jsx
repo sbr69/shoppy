@@ -7,7 +7,7 @@ import '../styles/landing.css';
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const navigate = useNavigate();
-  const { user, login } = useAuth();
+  const { user } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {

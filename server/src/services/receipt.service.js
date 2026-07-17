@@ -10,6 +10,8 @@ import { createHash } from 'crypto';
  */
 export function buildReceiptMemo(receiptData) {
   const payload = JSON.stringify({
+    i: receiptData.purchaseIntentId,
+    o: receiptData.merchantOrderId,
     p: receiptData.productName,
     a: receiptData.priceXlm,
     c: receiptData.currency,

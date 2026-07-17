@@ -7,6 +7,8 @@ import { generateText, parseJsonResponse } from './llm.service.js';
  * Falls back to keyword extraction if no Gemini API key is configured.
  */
 export async function parseIntent(message) {
+  const direct = directAction(message);
+  if (direct) return direct;
   const prompt = `You are a shopping assistant AI. Parse the following user message into a structured shopping intent.
 
 Extract:
@@ -27,12 +29,26 @@ Respond ONLY with valid JSON, no explanation.`;
   const response = await generateText(prompt, { jsonMode: true });
   const parsed = parseJsonResponse(response);
 
-  if (parsed) {
-    return parsed;
+  if (isValidIntent(parsed)) {
+    return {
+      ...parsed,
+      quantity: Math.min(Math.max(Number(parsed.quantity) || 1, 1), 100),
+      preferences: Array.isArray(parsed.preferences) ? parsed.preferences.slice(0, 20).map(String) : [],
+      constraints: Array.isArray(parsed.constraints) ? parsed.constraints.slice(0, 20).map(String) : [],
+    };
   }
 
   // Fallback: simple keyword parsing
   return fallbackParseIntent(message);
+}
+
+function isValidIntent(intent) {
+  if (!intent || !['search', 'confirm_purchase', 'cancel', 'greeting', 'question', 'other'].includes(intent.action)) return false;
+  if (intent.action === 'search' && (typeof intent.product !== 'string' || !intent.product.trim() || intent.product.length > 300)) return false;
+  for (const field of ['maxPrice', 'minPrice']) {
+    if (intent[field] !== null && intent[field] !== undefined && (!Number.isFinite(Number(intent[field])) || Number(intent[field]) < 0)) return false;
+  }
+  return true;
 }
 
 /**
@@ -97,4 +113,12 @@ function fallbackParseIntent(message) {
     constraints: [],
     rawQuery: message,
   };
+}
+
+function directAction(message) {
+  const lower = message.toLowerCase().trim();
+  const id = message.match(/\b([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\b/i)?.[1];
+  if (/^(yes|buy|confirm|purchase|go ahead|do it|buy it|proceed|ok buy)/.test(lower)) return { action: 'confirm_purchase', purchaseIntentId: id || null, rawQuery: message };
+  if (/^(no|cancel|skip|nevermind|don't|stop)/.test(lower)) return { action: 'cancel', rawQuery: message };
+  return null;
 }

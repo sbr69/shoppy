@@ -1,12 +1,14 @@
 import { useAuth } from '../contexts/AuthContext';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Lightning } from '@phosphor-icons/react';
 import AppLayout from '../components/layout/AppLayout';
 
 export default function Dashboard() {
-  const { user, isAuthenticated, loading, loginWithGoogle } = useAuth();
+  const { isAuthenticated, loading, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const [loginError, setLoginError] = useState('');
 
   if (loading) {
     return (
@@ -47,9 +49,12 @@ export default function Dashboard() {
           <GoogleLogin
             onSuccess={async (credentialResponse) => {
               try {
+                setLoginError('');
                 await loginWithGoogle(credentialResponse.credential);
+                navigate('/dashboard', { replace: true });
               } catch (err) {
                 console.error('Login error:', err);
+                setLoginError(err.response?.data?.details || err.response?.data?.error || 'Unable to sign in. Please try again.');
               }
             }}
             onError={() => {
@@ -61,6 +66,7 @@ export default function Dashboard() {
             text="signin_with"
             shape="pill"
           />
+          {loginError && <p className="login-error" role="alert">{loginError}</p>}
         </div>
 
         <div className="login-card-footer">

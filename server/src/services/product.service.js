@@ -50,7 +50,7 @@ Respond with JSON:
   const response = await generateText(prompt, { jsonMode: true });
   const parsed = parseJsonResponse(response);
 
-  if (parsed && typeof parsed.bestIndex === 'number' && parsed.bestIndex < products.length) {
+  if (parsed && Number.isInteger(parsed.bestIndex) && parsed.bestIndex >= 0 && parsed.bestIndex < products.length && typeof parsed.reasoning === 'string') {
     return {
       bestMatch: products[parsed.bestIndex],
       reasoning: parsed.reasoning,

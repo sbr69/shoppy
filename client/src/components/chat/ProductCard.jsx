@@ -1,6 +1,6 @@
 import { Storefront, ShoppingBag, Star, Brain, ShoppingCart, X } from '@phosphor-icons/react';
 
-export default function ProductCard({ product, reasoning, onConfirm, onSkip }) {
+export default function ProductCard({ product, reasoning, onConfirm, onSkip, historical = false }) {
   return (
     <div className="product-card">
       <div className="product-card-image">
@@ -43,18 +43,20 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip }) {
           <button
             className="btn btn-primary"
             onClick={onConfirm}
+            disabled={historical}
             id="product-buy-btn"
           >
             <ShoppingCart size={14} weight="bold" />
-            Buy This
+            Review Checkout
           </button>
           <button
             className="btn btn-secondary"
             onClick={onSkip}
+            disabled={historical}
             id="product-skip-btn"
           >
             <X size={14} weight="bold" />
-            Skip
+            {historical ? 'Expired' : 'Skip'}
           </button>
         </div>
       </div>

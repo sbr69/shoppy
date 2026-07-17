@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -31,24 +31,19 @@ export default function Sidebar({ isOpen, onClose }) {
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    fetchWallet();
-    fetchSites();
-  }, []);
-
-  const fetchWallet = async () => {
+  const fetchWallet = useCallback(async () => {
     try {
       setWalletLoading(true);
       const { data } = await api.get('/wallet');
       setWallet(data);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load wallet');
     } finally {
       setWalletLoading(false);
     }
-  };
+  }, [toast]);
 
-  const fetchSites = async () => {
+  const fetchSites = useCallback(async () => {
     try {
       setSitesLoading(true);
       const { data } = await api.get('/sites');
@@ -58,7 +53,12 @@ export default function Sidebar({ isOpen, onClose }) {
     } finally {
       setSitesLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchWallet();
+    fetchSites();
+  }, [fetchWallet, fetchSites]);
 
   const handleFund = async () => {
     try {
@@ -70,7 +70,7 @@ export default function Sidebar({ isOpen, onClose }) {
       } else {
         toast.success('Wallet funded with 10,000 XLM!');
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to fund wallet. Try again.');
     } finally {
       setFunding(false);

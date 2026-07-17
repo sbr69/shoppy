@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Use Vite's same-origin proxy in development. This also works when the
+// frontend is opened through a LAN address instead of localhost.
+const API_BASE = import.meta.env.DEV
+  ? ''
+  : (import.meta.env.VITE_API_URL || 'http://localhost:3001');
 
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
@@ -22,7 +26,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !error.config?.url?.startsWith('/auth/')) {
       sessionStorage.removeItem('jarvispays_token');
       sessionStorage.removeItem('jarvispays_user');
       window.location.href = '/';

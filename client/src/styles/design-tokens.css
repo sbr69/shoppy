@@ -105,6 +105,7 @@
   /* ─── Z-Index ─── */
   --z-base: 1;
   --z-nav: 50;
+  --z-overlay: 80;
   --z-modal: 100;
 
   /* ─── Layout ─── */

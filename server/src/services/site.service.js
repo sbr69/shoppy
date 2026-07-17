@@ -1,19 +1,27 @@
 import { v4 as uuidv4 } from 'uuid';
 import getDb from '../db/database.js';
+import config from '../config/env.js';
+import { parseFiniteNonNegative, validateSiteUpdate } from './validation.service.js';
 
 /**
  * Add a new connected site for a user.
  */
-export function addSite(userId, { siteUrl, siteName, spendingCap = 1000 }) {
+export function addSite(userId, { siteUrl, spendingCap = 1000, autoConfirmThreshold = 0 }) {
   const db = getDb();
-
-  // Normalize URL
-  let normalizedUrl = siteUrl.trim();
-  if (!normalizedUrl.startsWith('http')) {
-    normalizedUrl = `https://${normalizedUrl}`;
+  let parsed;
+  try {
+    parsed = new URL(siteUrl);
+  } catch {
+    throw new Error('siteUrl must be a valid URL');
   }
-  // Remove trailing slash
-  normalizedUrl = normalizedUrl.replace(/\/+$/, '');
+  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('siteUrl must use HTTP or HTTPS');
+  const normalizedUrl = parsed.origin;
+  const store = config.supportedStores.find((candidate) => candidate.origin === normalizedUrl);
+  if (!store) {
+    throw new Error('This store is not supported. Only registered stores with a verified agent API can be connected.');
+  }
+  const cap = parseFiniteNonNegative(spendingCap, 'spendingCap');
+  const threshold = parseFiniteNonNegative(autoConfirmThreshold, 'autoConfirmThreshold');
 
   // Check for duplicate
   const existing = db.prepare(
@@ -26,16 +34,21 @@ export function addSite(userId, { siteUrl, siteName, spendingCap = 1000 }) {
 
   const id = uuidv4();
   db.prepare(
-    'INSERT INTO connected_sites (id, user_id, site_url, site_name, spending_cap, status) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, userId, normalizedUrl, siteName, spendingCap, 'active');
+    `INSERT INTO connected_sites (id, user_id, site_url, site_name, adapter_id, merchant_stellar_address, spending_cap, auto_confirm_threshold, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, userId, normalizedUrl, store.name, store.id, store.merchantStellarAddress, cap, threshold, store.testMode === true && config.nodeEnv !== 'production' ? 'active' : 'paused');
 
   return {
     id,
     user_id: userId,
     site_url: normalizedUrl,
-    site_name: siteName,
-    spending_cap: spendingCap,
-    status: 'active',
+    site_name: store.name,
+    adapter_id: store.id,
+    merchant_stellar_address: store.merchantStellarAddress,
+    spending_cap: cap,
+    auto_confirm_threshold: threshold,
+    // Production stores remain paused until their OAuth/API authorization is complete.
+    status: store.testMode === true && config.nodeEnv !== 'production' ? 'active' : 'paused',
   };
 }
 
@@ -54,6 +67,7 @@ export function getUserSites(userId) {
  */
 export function updateSite(userId, siteId, updates) {
   const db = getDb();
+  const clean = validateSiteUpdate(updates);
 
   const site = db.prepare(
     'SELECT * FROM connected_sites WHERE id = ? AND user_id = ?'
@@ -62,21 +76,28 @@ export function updateSite(userId, siteId, updates) {
   if (!site) {
     throw new Error('Site not found');
   }
+  if (clean.status === 'active' && !site.auth_token && config.nodeEnv === 'production') {
+    throw new Error('This store needs merchant authorization before it can be activated');
+  }
 
   const fields = [];
   const values = [];
 
-  if (updates.siteName !== undefined) {
+  if (clean.siteName !== undefined) {
     fields.push('site_name = ?');
-    values.push(updates.siteName);
+    values.push(clean.siteName);
   }
-  if (updates.spendingCap !== undefined) {
+  if (clean.spendingCap !== undefined) {
     fields.push('spending_cap = ?');
-    values.push(updates.spendingCap);
+    values.push(clean.spendingCap);
   }
-  if (updates.status !== undefined) {
+  if (clean.autoConfirmThreshold !== undefined) {
+    fields.push('auto_confirm_threshold = ?');
+    values.push(clean.autoConfirmThreshold);
+  }
+  if (clean.status !== undefined) {
     fields.push('status = ?');
-    values.push(updates.status);
+    values.push(clean.status);
   }
 
   if (fields.length === 0) {
@@ -88,7 +109,7 @@ export function updateSite(userId, siteId, updates) {
     `UPDATE connected_sites SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`
   ).run(...values);
 
-  return { ...site, ...updates };
+  return { ...site, ...clean };
 }
 
 /**

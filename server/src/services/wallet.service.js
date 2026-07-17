@@ -7,7 +7,7 @@ import { encrypt, decrypt } from './crypto.service.js';
 /**
  * Generate a new Stellar keypair, encrypt the secret, and store in DB.
  */
-export async function createWalletForUser(userId, googleSub) {
+export function createWalletForUser(userId, googleSub) {
   const keypair = StellarSdk.Keypair.random();
   const publicKey = keypair.publicKey();
   const secretKey = keypair.secret();
@@ -19,8 +19,8 @@ export async function createWalletForUser(userId, googleSub) {
   const walletId = uuidv4();
 
   db.prepare(
-    'INSERT INTO wallets (id, user_id, public_key, encrypted_secret, iv, auth_tag) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(walletId, userId, publicKey, encrypted, iv, authTag);
+    'INSERT INTO wallets (id, user_id, public_key, encrypted_secret, iv, auth_tag, key_version) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(walletId, userId, publicKey, encrypted, iv, authTag, config.encryptionKeyVersion);
 
   console.log(`🔑 Wallet created for user ${userId}: ${publicKey}`);
 
@@ -88,11 +88,14 @@ export async function fundWalletWithFriendbot(publicKey) {
 export function getKeypairForSigning(userId, googleSub) {
   const db = getDb();
   const wallet = db.prepare(
-    'SELECT encrypted_secret, iv, auth_tag FROM wallets WHERE user_id = ?'
+    'SELECT encrypted_secret, iv, auth_tag, key_version FROM wallets WHERE user_id = ?'
   ).get(userId);
 
   if (!wallet) {
     throw new Error('Wallet not found for user');
+  }
+  if (wallet.key_version !== config.encryptionKeyVersion) {
+    throw new Error('Wallet encryption key needs rotation before it can be used');
   }
 
   const secretKey = decrypt(wallet.encrypted_secret, wallet.iv, wallet.auth_tag, googleSub);

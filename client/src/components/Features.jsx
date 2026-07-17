@@ -1,5 +1,5 @@
 import React from 'react';
-import { Robot, CreditCard, LockKey, Lightning, Globe, Shield } from '@phosphor-icons/react';
+import { Robot, LockKey, Lightning, Globe, Shield } from '@phosphor-icons/react';
 import '../styles/landing.css';
 
 const Features = () => {
@@ -31,8 +31,8 @@ const Features = () => {
               <Globe weight="light" size={32} />
             </div>
             <div className="bento-core-content">
-              <h3>Universal Access</h3>
-              <p>Operates across any digital storefront seamlessly.</p>
+              <h3>Verified Store Access</h3>
+              <p>Shops only through explicitly connected storefronts with supported agent APIs.</p>
             </div>
           </div>
         </div>
@@ -45,7 +45,7 @@ const Features = () => {
             </div>
             <div className="bento-core-content">
               <h3>Zero-Trust Execution</h3>
-              <p>Keys are never exposed. Smart contracts validate all intent parameters.</p>
+              <p>Keys never reach the browser. The MVP applies durable server-side policy checks before signing.</p>
             </div>
           </div>
         </div>

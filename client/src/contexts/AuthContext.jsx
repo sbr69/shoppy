@@ -14,8 +14,19 @@ export function AuthProvider({ children }) {
     const savedUser = sessionStorage.getItem('jarvispays_user');
 
     if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      try {
+        const payload = JSON.parse(atob(savedToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (Number(payload.exp) * 1000 > Date.now()) {
+          setToken(savedToken);
+          setUser(JSON.parse(savedUser));
+        } else {
+          sessionStorage.removeItem('jarvispays_token');
+          sessionStorage.removeItem('jarvispays_user');
+        }
+      } catch {
+        sessionStorage.removeItem('jarvispays_token');
+        sessionStorage.removeItem('jarvispays_user');
+      }
     }
     setLoading(false);
   }, []);

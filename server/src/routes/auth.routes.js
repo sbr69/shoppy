@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { loginWithGoogle } from '../services/auth.service.js';
+import config from '../config/env.js';
 
 const router = Router();
 
@@ -20,7 +21,10 @@ router.post('/google', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('❌ Google auth error:', err.message);
-    res.status(401).json({ error: 'Authentication failed', details: err.message });
+    res.status(401).json({
+      error: 'Authentication failed',
+      ...(config.nodeEnv === 'production' ? {} : { details: err.message }),
+    });
   }
 });
 

@@ -28,8 +28,17 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+const localDevOrigin = /^http:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
+
 app.use(cors({
-  origin: config.clientUrl,
+  origin(origin, callback) {
+    // Vite may be opened through a LAN address during local development.
+    const isAllowed = !origin
+      || origin === config.clientUrl
+      || (config.nodeEnv !== 'production' && localDevOrigin.test(origin));
+
+    callback(isAllowed ? null : new Error('Origin not allowed by CORS'), isAllowed);
+  },
   credentials: true,
 }));
 

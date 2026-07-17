@@ -4,8 +4,8 @@ import { LinkSimple, X } from '@phosphor-icons/react';
 
 export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
   const [siteUrl, setSiteUrl] = useState('');
-  const [siteName, setSiteName] = useState('');
   const [spendingCap, setSpendingCap] = useState(1000);
+  const [autoConfirmThreshold, setAutoConfirmThreshold] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -13,8 +13,8 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
     e.preventDefault();
     setError('');
 
-    if (!siteUrl.trim() || !siteName.trim()) {
-      setError('Please fill in both the site URL and name.');
+    if (!siteUrl.trim()) {
+      setError('Please enter the registered store URL.');
       return;
     }
 
@@ -22,13 +22,13 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
       setLoading(true);
       const { data } = await api.post('/sites', {
         siteUrl: siteUrl.trim(),
-        siteName: siteName.trim(),
         spendingCap,
+        autoConfirmThreshold,
       });
       onSiteAdded(data.site);
       setSiteUrl('');
-      setSiteName('');
       setSpendingCap(1000);
+      setAutoConfirmThreshold(0);
       onClose();
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to connect site';
@@ -66,18 +66,6 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="site-name">Store Name</label>
-            <input
-              id="site-name"
-              type="text"
-              className="form-input"
-              placeholder="My Store"
-              value={siteName}
-              onChange={(e) => setSiteName(e.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
             <label className="form-label" htmlFor="spending-cap">
               Daily Spending Cap (XLM)
             </label>
@@ -92,6 +80,20 @@ export default function ConnectSiteModal({ isOpen, onClose, onSiteAdded }) {
               step="100"
             />
             <span className="form-hint">Maximum amount the agent can spend per day on this store</span>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="auto-confirm-threshold">Auto-confirm Threshold (XLM)</label>
+            <input
+              id="auto-confirm-threshold"
+              type="number"
+              className="form-input"
+              value={autoConfirmThreshold}
+              onChange={(e) => setAutoConfirmThreshold(parseFloat(e.target.value) || 0)}
+              min="0"
+              step="1"
+            />
+            <span className="form-hint">Set to 0 to always require approval. Exact checkout totals still need confirmation.</span>
           </div>
 
           {error && (

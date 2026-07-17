@@ -20,13 +20,23 @@ router.get('/', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'No wallet found for this user' });
     }
 
-    // Fetch live balance from Stellar Horizon
-    const balanceInfo = await getWalletBalance(wallet.public_key);
+    // A local wallet is still usable when Stellar Horizon is temporarily
+    // unreachable (for example, from a restricted development environment).
+    let balanceInfo;
+    let networkAvailable = true;
+    try {
+      balanceInfo = await getWalletBalance(wallet.public_key);
+    } catch (err) {
+      console.warn('⚠️ Stellar Horizon unavailable:', err.message);
+      balanceInfo = { balance: '0', funded: false };
+      networkAvailable = false;
+    }
 
     res.json({
       publicKey: wallet.public_key,
       balance: balanceInfo.balance,
       funded: balanceInfo.funded,
+      networkAvailable,
       createdAt: wallet.created_at,
     });
   } catch (err) {
