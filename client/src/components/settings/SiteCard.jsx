@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import api from '../../services/api';
-import { Storefront, Pencil, Trash } from '@phosphor-icons/react';
+import { Storefront, Pencil, Plug } from '@phosphor-icons/react';
 
 export default function SiteCard({ site, onUpdate, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [cap, setCap] = useState(site.spending_cap);
   const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const handleSaveCap = async () => {
     try {
@@ -31,16 +31,16 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
     }
   };
 
-  const handleRemove = async () => {
-    if (!confirm(`Remove "${site.site_name}" from connected stores?`)) return;
+  const handleDisconnect = async () => {
+    if (!confirm(`Disconnect "${site.site_name}"? The agent will lose access until you connect it again.`)) return;
     try {
-      setRemoving(true);
-      await api.delete(`/sites/${site.id}`);
-      onRemove(site.id);
+      setDisconnecting(true);
+      await api.post(`/sites/${site.id}/disconnect`);
+      onUpdate({ ...site, status: 'revoked' });
     } catch (err) {
       console.error('Remove error:', err);
     } finally {
-      setRemoving(false);
+      setDisconnecting(false);
     }
   };
 
@@ -103,15 +103,15 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
       <div className="site-card-footer">
         <button
           className="btn btn-ghost site-remove-btn"
-          onClick={handleRemove}
-          disabled={removing}
+          onClick={handleDisconnect}
+          disabled={disconnecting}
         >
-          {removing ? (
-            'Removing...'
+          {disconnecting ? (
+            'Disconnecting...'
           ) : (
             <>
-              <Trash size={14} />
-              Remove
+              <Plug size={14} />
+              Disconnect
             </>
           )}
         </button>

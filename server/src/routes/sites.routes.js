@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { addSite, getUserSites, updateSite, removeSite, syncSitePolicy } from '../services/site.service.js';
-import { completeStoreOAuth, startStoreOAuth } from '../services/site-oauth.service.js';
+import { completeStoreOAuth, disconnectStore, startStoreOAuth } from '../services/site-oauth.service.js';
 
 const router = Router();
 
@@ -88,6 +88,10 @@ router.post('/:id/policy/sync', authenticate, async (req, res) => {
     console.error('Policy sync error:', error.message);
     res.status(error.message === 'Site not found' ? 404 : 400).json({ error: error.message });
   }
+});
+
+router.post('/:id/disconnect', authenticate, async (req, res) => {
+  try { res.json(await disconnectStore(req.user.userId, req.params.id)); } catch (error) { res.status(error.message === 'Store not found' ? 404 : 400).json({ error: error.message }); }
 });
 
 /**

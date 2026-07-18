@@ -7,6 +7,7 @@ import { executeCustodialPayment } from './payment.service.js';
 import { markIntentState, reserveSpend } from './policy.service.js';
 import { recordWorkflowEvent } from './workflow.service.js';
 import { syncSitePolicy } from './site.service.js';
+import { deliveryAddress, getProfile } from './profile.service.js';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
 
@@ -66,6 +67,10 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   let [site] = await db`select * from connected_sites where id = ${purchaseIntent.site_id} and user_id = ${userId} and status = 'active'`;
   if (!site) return { type: 'text', content: 'The selected store is no longer active or authorized.' };
   const product = purchaseIntent.product_json;
+  const profileState = await getProfile(userId);
+  if (profileState.missing.length) {
+    return { type: 'profile_required', content: `Before I can place a delivery order, open Settings → Personal details and complete: ${profileState.missing.join(', ')}. I will keep this product selected.`, metadata: { missing: profileState.missing, purchaseIntentId: purchaseIntent.id } };
+  }
   if (!site.policy_synced_at) {
     try {
       await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'policy', status: 'running', detail: 'Synchronizing SpendGuard and merchant trust policy.' });
@@ -81,7 +86,7 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   if (purchaseIntent.state === 'selected') {
     try {
       await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'checkout', status: 'running', detail: 'Verifying merchant checkout total.' });
-      const checkout = await adapter.prepareCheckout(product, purchaseIntent.quantity, purchaseIntent.idempotency_key);
+      const checkout = await adapter.prepareCheckout(product, purchaseIntent.quantity, purchaseIntent.idempotency_key, deliveryAddress(profileState.profile));
       if (Number(checkout.xlmAmount) > Number(site.per_transaction_cap)) return { type: 'purchase_failed', content: 'The verified total exceeds this store’s on-chain per-transaction limit.' };
       await markIntentState(purchaseIntent.id, 'confirmed', { merchant_order_id: checkout.orderId, price_xlm: Number(checkout.xlmAmount), final_total_json: checkout });
       await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'checkout', status: 'completed', detail: `Merchant order ${checkout.orderId} reserved.`, metadata: { amountXlm: Number(checkout.xlmAmount) } });

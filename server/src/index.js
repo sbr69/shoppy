@@ -9,6 +9,7 @@ import walletRoutes from './routes/wallet.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import sitesRoutes from './routes/sites.routes.js';
 import purchasesRoutes from './routes/purchases.routes.js';
+import profileRoutes from './routes/profile.routes.js';
 import { reconcilePendingPurchases } from './services/payment.service.js';
 
 const app = express();
@@ -54,6 +55,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/chat', chatLimiter, chatRoutes);
 app.use('/api/sites', sitesRoutes);
 app.use('/api/purchases', purchasesRoutes);
+app.use('/api/profile', profileRoutes);
 
 // ─── Health check ───
 app.get('/api/health', (req, res) => {

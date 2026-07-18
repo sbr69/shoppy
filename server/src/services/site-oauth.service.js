@@ -1,101 +1,105 @@
 import { createHash, randomBytes } from 'crypto';
+import { lookup } from 'dns/promises';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
 import { decrypt, encrypt } from './crypto.service.js';
-import { getOrCreateOAuthSite } from './site.service.js';
 
 const OAUTH_TTL_MS = 10 * 60 * 1000;
-const base64Url = (value) => Buffer.from(value).toString('base64url');
-const stateHash = (state) => createHash('sha256').update(state).digest('hex');
-const attemptScope = (hash) => `store-oauth-attempt:${hash}`;
+const REQUIRED_SCOPES = ['profile', 'checkout:prepare', 'checkout:confirm', 'orders:read'];
+const hash = (value) => createHash('sha256').update(value).digest('hex');
+const attemptScope = (value) => `store-oauth-attempt:${value}`;
 const tokenScope = (siteId) => `store-oauth-token:${siteId}`;
+const clientScope = (siteId) => `store-oauth-client:${siteId}`;
+const callbackUrl = () => new URL('/api/sites/oauth/callback', `${config.serverPublicUrl}/`).toString();
+const dashboard = (params) => { const url = new URL('/dashboard', `${config.clientUrl}/`); Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v)); return url.toString(); };
 
-function callbackUrl() { return new URL('/api/sites/oauth/callback', `${config.serverPublicUrl}/`).toString(); }
-
-function safeDashboardRedirect(params) {
-  const url = new URL('/dashboard', `${config.clientUrl}/`);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+function isPrivateAddress(address) {
+  return address === '::1' || address.startsWith('fe80:') || address.startsWith('fc') || address.startsWith('fd') || /^127\./.test(address) || /^10\./.test(address) || /^192\.168\./.test(address) || /^169\.254\./.test(address) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(address) || address === '0.0.0.0';
+}
+async function safeOrigin(value) {
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Stores must use a public HTTPS URL');
+  const records = await lookup(url.hostname, { all: true });
+  if (!records.length || records.some((record) => isPrivateAddress(record.address))) throw new Error('Private or local store URLs cannot be connected');
+  return url.origin;
+}
+async function getJson(url) {
+  const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000), redirect: 'error' });
+  if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) throw new Error('Store discovery endpoint did not return valid JSON');
+  return response.json();
+}
+function endpoint(value, origin, name) {
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.origin !== origin) throw new Error(`${name} must be an HTTPS endpoint on the store origin`);
   return url.toString();
 }
 
-/** Start OAuth authorization code flow; this endpoint deliberately never accepts a return URL. */
-export async function startStoreOAuth(userId, input) {
-  const { site, store } = await getOrCreateOAuthSite(userId, input);
-  const state = randomBytes(32).toString('base64url');
-  const hash = stateHash(state);
-  const verifier = randomBytes(48).toString('base64url');
-  const codeChallenge = createHash('sha256').update(verifier).digest('base64url');
-  const sealed = encrypt(verifier, attemptScope(hash));
+async function discover(siteUrl) {
+  const origin = await safeOrigin(siteUrl);
+  const [oauth, commerce] = await Promise.all([getJson(`${origin}/.well-known/oauth-authorization-server`), getJson(`${origin}/.well-known/agent-commerce`)]);
+  const authorizationUrl = endpoint(oauth.authorization_endpoint, origin, 'authorization_endpoint');
+  const tokenUrl = endpoint(oauth.token_endpoint, origin, 'token_endpoint');
+  const registrationUrl = endpoint(oauth.registration_endpoint, origin, 'registration_endpoint');
+  if (!Array.isArray(oauth.code_challenge_methods_supported) || !oauth.code_challenge_methods_supported.includes('S256')) throw new Error('Store must support OAuth PKCE S256');
+  const searchUrl = endpoint(commerce.search_endpoint, origin, 'search_endpoint');
+  const prepareUrl = endpoint(commerce.checkout_prepare_endpoint, origin, 'checkout_prepare_endpoint');
+  const confirmUrl = endpoint(commerce.checkout_confirm_endpoint, origin, 'checkout_confirm_endpoint');
+  const merchant = commerce.settlement?.merchant_stellar_address;
+  if (commerce.settlement?.network !== 'testnet' || commerce.settlement?.asset !== 'XLM' || typeof merchant !== 'string' || !/^G[A-Z2-7]{55}$/.test(merchant)) throw new Error('Store must publish a valid testnet XLM settlement configuration');
+  return { origin, oauth: { authorizationUrl, tokenUrl, registrationUrl }, commerce: { searchUrl, prepareUrl, confirmUrl, ordersUrl: commerce.orders_endpoint ? endpoint(commerce.orders_endpoint, origin, 'orders_endpoint') : null, settlement: commerce.settlement } };
+}
+function readClient(site) { return JSON.parse(decrypt(Buffer.from(site.oauth_client_ciphertext, 'base64'), Buffer.from(site.oauth_client_iv, 'base64'), Buffer.from(site.oauth_client_tag, 'base64'), clientScope(site.id))); }
+
+async function createSiteAndClient(userId, input) {
+  const discovered = await discover(input.siteUrl);
   const db = getDb();
+  const cap = Number(input.spendingCap ?? 1000); const perCap = Number(input.perTransactionCap ?? cap);
+  if (!Number.isFinite(cap) || !Number.isFinite(perCap) || cap < 0 || perCap < 0 || perCap > cap) throw new Error('Invalid spending limits');
+  const [site] = await db`insert into connected_sites (user_id, site_url, site_name, adapter_id, merchant_stellar_address, merchant_domain_hash, spending_cap, per_transaction_cap, status, oauth_server_metadata, agent_manifest) values (${userId}, ${discovered.origin}, ${new URL(discovered.origin).hostname}, 'agent-commerce-v1', ${discovered.commerce.settlement.merchant_stellar_address}, ${hash(new URL(discovered.origin).hostname)}, ${cap}, ${perCap}, 'pending_authorization', ${db.json(discovered.oauth)}, ${db.json(discovered.commerce)}) on conflict (user_id, site_url) do update set oauth_server_metadata = excluded.oauth_server_metadata, agent_manifest = excluded.agent_manifest, merchant_stellar_address = excluded.merchant_stellar_address, status = 'pending_authorization', updated_at = now() returning *`;
+  const registration = await fetch(discovered.oauth.registrationUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'JarvisPayz Shopping Agent', redirect_uris: [callbackUrl()], token_endpoint_auth_method: 'client_secret_post', scope: REQUIRED_SCOPES.join(' ') }), signal: AbortSignal.timeout(10_000), redirect: 'error' });
+  if (!registration.ok) throw new Error(`Store client registration failed (${registration.status})`);
+  const client = await registration.json();
+  if (!client.client_id || !client.client_secret) throw new Error('Store registration did not provide confidential client credentials');
+  const sealed = encrypt(JSON.stringify({ clientId: client.client_id, clientSecret: client.client_secret, scopes: REQUIRED_SCOPES }), clientScope(site.id));
+  const [updated] = await db`update connected_sites set oauth_client_ciphertext = ${sealed.encrypted.toString('base64')}, oauth_client_iv = ${sealed.iv.toString('base64')}, oauth_client_tag = ${sealed.authTag.toString('base64')} where id = ${site.id} returning *`;
+  return updated;
+}
+
+export async function startStoreOAuth(userId, input) {
+  const site = await createSiteAndClient(userId, input);
+  const client = readClient(site); const state = randomBytes(32).toString('base64url'); const stateHash = hash(state); const verifier = randomBytes(48).toString('base64url');
+  const sealed = encrypt(verifier, attemptScope(stateHash)); const db = getDb();
   await db`delete from site_oauth_attempts where user_id = ${userId} and site_id = ${site.id} and consumed_at is null`;
-  await db`insert into site_oauth_attempts (user_id, site_id, state_hash, code_verifier_ciphertext, code_verifier_iv, code_verifier_tag, expires_at)
-    values (${userId}, ${site.id}, ${hash}, ${sealed.encrypted.toString('base64')}, ${sealed.iv.toString('base64')}, ${sealed.authTag.toString('base64')}, ${new Date(Date.now() + OAUTH_TTL_MS).toISOString()})`;
-  const authorize = new URL(store.oauth.authorizationUrl);
-  authorize.searchParams.set('response_type', 'code');
-  authorize.searchParams.set('client_id', store.oauth.clientId);
-  authorize.searchParams.set('redirect_uri', callbackUrl());
-  authorize.searchParams.set('state', state);
-  authorize.searchParams.set('code_challenge', codeChallenge);
-  authorize.searchParams.set('code_challenge_method', 'S256');
-  if (store.oauth.scopes.length) authorize.searchParams.set('scope', store.oauth.scopes.join(' '));
+  await db`insert into site_oauth_attempts (user_id, site_id, state_hash, code_verifier_ciphertext, code_verifier_iv, code_verifier_tag, expires_at) values (${userId}, ${site.id}, ${stateHash}, ${sealed.encrypted.toString('base64')}, ${sealed.iv.toString('base64')}, ${sealed.authTag.toString('base64')}, ${new Date(Date.now() + OAUTH_TTL_MS).toISOString()})`;
+  const authorize = new URL(site.oauth_server_metadata.authorizationUrl); authorize.search = new URLSearchParams({ response_type: 'code', client_id: client.clientId, redirect_uri: callbackUrl(), state, scope: client.scopes.join(' '), code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
   return { authorizationUrl: authorize.toString(), site: { id: site.id, siteUrl: site.site_url, siteName: site.site_name } };
 }
 
 export async function completeStoreOAuth({ code, state, error, errorDescription }) {
-  if (error) return { redirectUrl: safeDashboardRedirect({ storeConnection: 'failed' }), error: errorDescription || error };
-  if (typeof code !== 'string' || code.length > 10_000 || typeof state !== 'string' || state.length > 512) return { redirectUrl: safeDashboardRedirect({ storeConnection: 'failed' }), error: 'Invalid OAuth callback' };
-  const hash = stateHash(state);
-  const db = getDb();
-  const [claimed] = await db`update site_oauth_attempts set consumed_at = now() where state_hash = ${hash} and consumed_at is null and expires_at > now() returning *`;
-  if (!claimed) return { redirectUrl: safeDashboardRedirect({ storeConnection: 'failed' }), error: 'This store connection expired or was already completed' };
-  const [site] = await db`select adapter_id, site_url, site_name from connected_sites where id = ${claimed.site_id}`;
-  const attempt = { ...claimed, ...site };
-  const store = config.supportedStores.find((candidate) => candidate.id === attempt.adapter_id && candidate.origin === attempt.site_url);
-  if (!store?.oauth) return { redirectUrl: safeDashboardRedirect({ storeConnection: 'failed' }), error: 'Store OAuth configuration is unavailable' };
+  if (error || typeof code !== 'string' || typeof state !== 'string') return { redirectUrl: dashboard({ storeConnection: 'failed' }), error: errorDescription || error || 'Invalid OAuth callback' };
+  const db = getDb(); const [attempt] = await db`update site_oauth_attempts set consumed_at = now() where state_hash = ${hash(state)} and consumed_at is null and expires_at > now() returning *`;
+  if (!attempt) return { redirectUrl: dashboard({ storeConnection: 'failed' }), error: 'This store connection expired or was already completed' };
+  const [site] = await db`select * from connected_sites where id = ${attempt.site_id}`;
   try {
-    const verifier = decrypt(Buffer.from(attempt.code_verifier_ciphertext, 'base64'), Buffer.from(attempt.code_verifier_iv, 'base64'), Buffer.from(attempt.code_verifier_tag, 'base64'), attemptScope(hash));
-    const body = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callbackUrl(), client_id: store.oauth.clientId, code_verifier: verifier });
-    if (store.oauth.clientSecret) body.set('client_secret', store.oauth.clientSecret);
-    const response = await fetch(store.oauth.tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000), redirect: 'error' });
-    if (!response.ok) throw new Error(`Token exchange failed (${response.status})`);
-    const token = await response.json();
-    if (!token?.access_token || typeof token.access_token !== 'string') throw new Error('Token response did not include an access token');
-    const expiresAt = Number.isFinite(Number(token.expires_in)) ? new Date(Date.now() + Number(token.expires_in) * 1000).toISOString() : null;
-    const sealed = encrypt(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token || null, tokenType: token.token_type || 'Bearer', expiresAt, scope: token.scope || store.oauth.scopes.join(' ') }), tokenScope(attempt.site_id));
-    await db.begin(async (tx) => {
-      await tx`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${expiresAt}, auth_scope = ${token.scope || store.oauth.scopes.join(' ')}, authorized_at = now(), status = 'active', updated_at = now() where id = ${attempt.site_id}`;
-      await tx`insert into audit_events (user_id, event_type, payload) values (${attempt.user_id}, 'store_oauth_connected', ${tx.json({ siteId: attempt.site_id, siteUrl: attempt.site_url, scopes: token.scope || store.oauth.scopes })})`;
-    });
-    return { redirectUrl: safeDashboardRedirect({ storeConnection: 'success', siteId: attempt.site_id }) };
-  } catch (exchangeError) {
-    await db`update connected_sites set status = 'pending_authorization', policy_sync_error = ${exchangeError.message}, updated_at = now() where id = ${attempt.site_id}`;
-    return { redirectUrl: safeDashboardRedirect({ storeConnection: 'failed' }), error: exchangeError.message };
-  }
+    const verifier = decrypt(Buffer.from(attempt.code_verifier_ciphertext, 'base64'), Buffer.from(attempt.code_verifier_iv, 'base64'), Buffer.from(attempt.code_verifier_tag, 'base64'), attemptScope(hash(state)));
+    const client = readClient(site); const body = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callbackUrl(), client_id: client.clientId, client_secret: client.clientSecret, code_verifier: verifier });
+    const response = await fetch(site.oauth_server_metadata.tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000), redirect: 'error' });
+    if (!response.ok) throw new Error(`Token exchange failed (${response.status})`); const token = await response.json(); if (!token.access_token) throw new Error('Token response did not include an access token');
+    const expiresAt = new Date(Date.now() + Number(token.expires_in || 900) * 1000).toISOString(); const sealed = encrypt(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token, tokenType: token.token_type || 'Bearer', expiresAt, scope: token.scope || client.scopes.join(' ') }), tokenScope(site.id));
+    await db`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${expiresAt}, auth_scope = ${token.scope || client.scopes.join(' ')}, authorized_at = now(), status = 'active', updated_at = now() where id = ${site.id}`;
+    return { redirectUrl: dashboard({ storeConnection: 'success', siteId: site.id }) };
+  } catch (err) { await db`update connected_sites set status = 'pending_authorization', policy_sync_error = ${err.message} where id = ${site.id}`; return { redirectUrl: dashboard({ storeConnection: 'failed' }), error: err.message }; }
 }
 
 export async function getStoreAccessToken(site) {
-  if (!site.auth_token_ciphertext || !site.auth_token_iv || !site.auth_token_tag) throw new Error('The store is not authorized');
-  const value = decrypt(Buffer.from(site.auth_token_ciphertext, 'base64'), Buffer.from(site.auth_token_iv, 'base64'), Buffer.from(site.auth_token_tag, 'base64'), tokenScope(site.id));
-  const token = JSON.parse(value);
-  // Refresh a minute early so an in-flight checkout cannot start with a token
-  // that expires while the merchant processes it.
-  if (token.expiresAt && new Date(token.expiresAt).getTime() <= Date.now() + 60_000) {
-    if (!token.refreshToken) throw new Error('Store authorization expired. Reconnect the store to continue.');
-    const store = config.supportedStores.find((candidate) => candidate.id === site.adapter_id);
-    if (!store?.oauth) throw new Error('Store OAuth configuration is unavailable');
-    const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: token.refreshToken, client_id: store.oauth.clientId });
-    if (store.oauth.clientSecret) body.set('client_secret', store.oauth.clientSecret);
-    const response = await fetch(store.oauth.tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000), redirect: 'error' });
-    if (!response.ok) throw new Error('Store authorization expired. Reconnect the store to continue.');
-    const refreshed = await response.json();
-    if (!refreshed?.access_token) throw new Error('Store authorization refresh returned no access token');
-    token.accessToken = refreshed.access_token;
-    token.refreshToken = refreshed.refresh_token || token.refreshToken;
-    token.tokenType = refreshed.token_type || token.tokenType || 'Bearer';
-    token.expiresAt = Number.isFinite(Number(refreshed.expires_in)) ? new Date(Date.now() + Number(refreshed.expires_in) * 1000).toISOString() : null;
-    token.scope = refreshed.scope || token.scope;
-    const sealed = encrypt(JSON.stringify(token), tokenScope(site.id));
-    await getDb()`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${token.expiresAt}, auth_scope = ${token.scope || null}, updated_at = now() where id = ${site.id}`;
-  }
+  const token = JSON.parse(decrypt(Buffer.from(site.auth_token_ciphertext, 'base64'), Buffer.from(site.auth_token_iv, 'base64'), Buffer.from(site.auth_token_tag, 'base64'), tokenScope(site.id)));
+  if (new Date(token.expiresAt).getTime() > Date.now() + 60_000) return token;
+  const client = readClient(site); const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: token.refreshToken, client_id: client.clientId, client_secret: client.clientSecret });
+  const response = await fetch(site.oauth_server_metadata.tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000), redirect: 'error' });
+  if (!response.ok) throw new Error('Store authorization refresh failed. Reconnect the store to continue.'); const refreshed = await response.json();
+  Object.assign(token, { accessToken: refreshed.access_token, refreshToken: refreshed.refresh_token || token.refreshToken, tokenType: refreshed.token_type || token.tokenType, expiresAt: new Date(Date.now() + Number(refreshed.expires_in || 900) * 1000).toISOString(), scope: refreshed.scope || token.scope });
+  const sealed = encrypt(JSON.stringify(token), tokenScope(site.id)); await getDb()`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${token.expiresAt} where id = ${site.id}`;
   return token;
 }
+
+export async function disconnectStore(userId, siteId) { const db = getDb(); const [site] = await db`select * from connected_sites where id = ${siteId} and user_id = ${userId}`; if (!site) throw new Error('Store not found'); if (site.auth_token_ciphertext) { try { const token = JSON.parse(decrypt(Buffer.from(site.auth_token_ciphertext, 'base64'), Buffer.from(site.auth_token_iv, 'base64'), Buffer.from(site.auth_token_tag, 'base64'), tokenScope(site.id))); const client = readClient(site); await fetch(site.oauth_server_metadata.tokenUrl.replace(/\/token$/, '/revoke'), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: token.refreshToken || token.accessToken, client_id: client.clientId, client_secret: client.clientSecret }), signal: AbortSignal.timeout(10_000) }); } catch {} } await db`update connected_sites set auth_token_ciphertext = null, auth_token_iv = null, auth_token_tag = null, auth_token_expires_at = null, auth_scope = null, status = 'revoked', updated_at = now() where id = ${site.id}`; return { success: true }; }

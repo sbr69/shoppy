@@ -8,9 +8,11 @@ export default function SettingsPanel({ isOpen, onClose }) {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [profile, setProfile] = useState({ fullName: '', phone: '', line1: '', city: '', state: '', postalCode: '', country: '' });
+  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
-    if (isOpen) fetchSites();
+    if (isOpen) { fetchSites(); api.get('/profile').then(({ data }) => setProfile((current) => ({ ...current, ...(data.profile || {}) }))).catch(() => {}); }
   }, [isOpen]);
 
   const fetchSites = async () => {
@@ -50,6 +52,14 @@ export default function SettingsPanel({ isOpen, onClose }) {
         </div>
 
         <div className="settings-body">
+          <div className="settings-section">
+            <div className="settings-section-header"><h3>Personal details</h3></div>
+            <p className="form-hint">Saved securely and shared only with a store when you approve a delivery checkout.</p>
+            <div className="settings-profile-grid">
+              {[['fullName', 'Full name'], ['phone', 'Phone'], ['line1', 'Address'], ['city', 'City'], ['state', 'State'], ['postalCode', 'PIN / postal code'], ['country', 'Country']].map(([key, label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" value={profile[key]} onChange={(event) => setProfile({ ...profile, [key]: event.target.value })} /></label>)}
+            </div>
+            <button className="btn btn-primary btn-sm" disabled={savingProfile} onClick={async () => { setSavingProfile(true); try { await api.put('/profile', profile); } finally { setSavingProfile(false); } }}>{savingProfile ? 'Saving…' : 'Save personal details'}</button>
+          </div>
           {/* Connected Sites Section */}
           <div className="settings-section">
             <div className="settings-section-header">
