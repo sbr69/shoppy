@@ -5,16 +5,29 @@ import { X } from '@phosphor-icons/react';
 export default function SettingsPanel({ isOpen, onClose }) {
   const [profile, setProfile] = useState({ fullName: '', phone: '', line1: '', city: '', state: '', postalCode: '', country: '' });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [animateOut, setAnimateOut] = useState(false);
 
   useEffect(() => {
-    if (isOpen) { api.get('/profile').then(({ data }) => setProfile((current) => ({ ...current, ...(data.profile || {}) }))).catch(() => {}); }
-  }, [isOpen]);
+    if (isOpen) {
+      setShouldRender(true);
+      setAnimateOut(false);
+      api.get('/profile').then(({ data }) => setProfile((current) => ({ ...current, ...(data.profile || {}) }))).catch(() => {});
+    } else if (shouldRender) {
+      setAnimateOut(true);
+      const timer = setTimeout(() => {
+        setShouldRender(false);
+        setAnimateOut(false);
+      }, 280);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, shouldRender]);
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
+    <div className={`modal-overlay ${animateOut ? 'animate-out' : ''}`} onClick={onClose}>
+      <div className={`settings-panel ${animateOut ? 'animate-out' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h2>Settings</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">

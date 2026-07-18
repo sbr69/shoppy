@@ -57,7 +57,6 @@ export default function AppLayout() {
           <ChatWindow
             sessionId={sessionId}
             onSessionReady={setSessionId}
-            onToggleSidebar={() => setSidebarOpen(prev => !prev)}
             onToggleTelemetry={() => setTelemetryOpen(prev => !prev)}
             telemetryOpen={telemetryOpen}
             onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}

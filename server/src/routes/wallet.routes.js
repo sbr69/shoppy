@@ -2,8 +2,17 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { fundAgentSmartWalletFromCustody, fundAgentWalletWithFriendbot, fundWalletWithFriendbot, getAgentSmartWalletBalanceForUser, getAgentWalletByUserId, getWalletByUserId } from '../services/wallet.service.js';
 import getDb from '../db/database.js';
+import config from '../config/env.js';
 
 const router = Router();
+const txHashPattern = /^[a-f\d]{64}$/i;
+const explorerUrl = (txHash) => txHash && txHashPattern.test(txHash)
+  ? `https://stellar.expert/explorer/${config.stellarNetwork === 'mainnet' ? 'public' : 'testnet'}/tx/${txHash}`
+  : null;
+const payloadTransactionHash = (payload) => {
+  const value = typeof payload === 'string' ? (() => { try { return JSON.parse(payload); } catch { return {}; } })() : (payload || {});
+  return [value.txHash, value.setRuleTx, value.removeRuleTx, value.transferTxHash, value.fundingTxHash].find((hash) => typeof hash === 'string' && txHashPattern.test(hash)) || null;
+};
 
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -33,8 +42,11 @@ router.get('/activity', authenticate, async (req, res) => {
       db`select id, event_type, payload, created_at from audit_events where user_id = ${req.user.userId} order by created_at desc limit 50`,
     ]);
     const activity = [
-      ...purchases.map((purchase) => ({ id: `purchase-${purchase.id}`, type: 'purchase', title: purchase.product_name, amountXlm: Number(purchase.price_xlm), status: purchase.status, txHash: purchase.stellar_tx_hash, createdAt: purchase.created_at })),
-      ...events.map((event) => ({ id: `audit-${event.id}`, type: event.event_type, title: event.event_type.replaceAll('_', ' '), metadata: event.payload, createdAt: event.created_at })),
+      ...purchases.map((purchase) => ({ id: `purchase-${purchase.id}`, type: 'purchase', title: purchase.product_name, amountXlm: Number(purchase.price_xlm), status: purchase.status, txHash: purchase.stellar_tx_hash, explorerUrl: explorerUrl(purchase.stellar_tx_hash), createdAt: purchase.created_at })),
+      ...events.map((event) => {
+        const txHash = payloadTransactionHash(event.payload);
+        return { id: `audit-${event.id}`, type: event.event_type, title: event.event_type.replaceAll('_', ' '), metadata: event.payload, txHash, explorerUrl: explorerUrl(txHash), createdAt: event.created_at };
+      }),
     ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json({ activity });
   } catch (error) { res.status(500).json({ error: 'Failed to load wallet activity' }); }

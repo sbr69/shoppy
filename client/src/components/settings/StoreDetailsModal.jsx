@@ -4,19 +4,36 @@ import SiteCard from './SiteCard';
 
 export default function StoreDetailsModal({ site, onClose, onUpdated, onDisconnected }) {
   const [currentSite, setCurrentSite] = useState(site);
+  const [shouldRender, setShouldRender] = useState(Boolean(site));
+  const [animateOut, setAnimateOut] = useState(false);
 
-  useEffect(() => setCurrentSite(site), [site]);
   useEffect(() => {
-    if (!site) return undefined;
+    if (site) {
+      setCurrentSite(site);
+      setShouldRender(true);
+      setAnimateOut(false);
+    } else if (shouldRender) {
+      setAnimateOut(true);
+      const timer = setTimeout(() => {
+        setShouldRender(false);
+        setAnimateOut(false);
+      }, 280);
+      return () => clearTimeout(timer);
+    }
+  }, [site, shouldRender]);
+
+  useEffect(() => {
+    if (!shouldRender || animateOut) return undefined;
     const onKeyDown = (event) => { if (event.key === 'Escape') onClose?.(); };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [site, onClose]);
+  }, [shouldRender, animateOut, onClose]);
 
-  if (!currentSite) return null;
+  if (!shouldRender || !currentSite) return null;
+
   return (
-    <div className="modal-overlay" onMouseDown={onClose}>
-      <section className="settings-panel store-details-modal" role="dialog" aria-modal="true" aria-labelledby="store-details-title" onMouseDown={(event) => event.stopPropagation()}>
+    <div className={`modal-overlay ${animateOut ? 'animate-out' : ''}`} onMouseDown={onClose}>
+      <section className={`settings-panel store-details-modal ${animateOut ? 'animate-out' : ''}`} role="dialog" aria-modal="true" aria-labelledby="store-details-title" onMouseDown={(event) => event.stopPropagation()}>
         <header className="settings-header">
           <div>
             <p className="store-dialog-eyebrow">AUTHORIZED STOREFRONT</p>

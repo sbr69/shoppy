@@ -246,6 +246,8 @@ export async function executeCustodialPayment(userId, googleSub, purchaseIntent,
     priceXlm: amount,
     orderId,
     receiptData,
+    timestamp: receiptData.timestamp,
+    explorerUrl: `https://stellar.expert/explorer/${config.stellarNetwork === 'mainnet' ? 'public' : 'testnet'}/tx/${submitted.txHash}`,
     memoHash: receiptHash.toString('hex'),
   };
 }

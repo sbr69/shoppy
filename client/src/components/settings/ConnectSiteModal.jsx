@@ -8,9 +8,25 @@ export default function ConnectSiteModal({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const urlInputRef = useRef(null);
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [animateOut, setAnimateOut] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (isOpen) {
+      setShouldRender(true);
+      setAnimateOut(false);
+    } else if (shouldRender) {
+      setAnimateOut(true);
+      const timer = setTimeout(() => {
+        setShouldRender(false);
+        setAnimateOut(false);
+      }, 280);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, shouldRender]);
+
+  useEffect(() => {
+    if (!shouldRender || animateOut) return undefined;
     const previousFocus = document.activeElement;
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onClose();
@@ -21,7 +37,7 @@ export default function ConnectSiteModal({ isOpen, onClose }) {
       document.removeEventListener('keydown', handleKeyDown);
       previousFocus?.focus?.();
     };
-  }, [isOpen, onClose]);
+  }, [shouldRender, animateOut, onClose]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -47,11 +63,11 @@ export default function ConnectSiteModal({ isOpen, onClose }) {
     }
   };
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="connect-store-title" onClick={(e) => e.stopPropagation()}>
+    <div className={`modal-overlay ${animateOut ? 'animate-out' : ''}`} onClick={onClose}>
+      <div className={`modal-card glass-card ${animateOut ? 'animate-out' : ''}`} role="dialog" aria-modal="true" aria-labelledby="connect-store-title" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3 id="connect-store-title">Connect a Store</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">

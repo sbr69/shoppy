@@ -17,6 +17,7 @@ import {
   Trash,
   Check,
   X,
+  User,
 } from '@phosphor-icons/react';
 
 export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect }) {
@@ -89,11 +90,6 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
             </div>
             <span>JarvisPayz</span>
           </div>
-          <button className="sidebar-user-btn" title={user?.email} aria-label="Current account">
-            {user?.avatarUrl && (
-              <img src={user.avatarUrl} alt={user.name} referrerPolicy="no-referrer" />
-            )}
-          </button>
         </div>
 
         <nav className="sidebar-nav" aria-label="Workspace">

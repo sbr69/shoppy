@@ -125,8 +125,8 @@
   grid-template-columns: 1.8fr 1fr 1fr 1.2fr 1fr;
 }
 
-.wallet-activity-header {
-  grid-template-columns: 2fr 1.2fr 1fr;
+.workspace-list-header.hide-mobile.wallet-activity-header {
+  grid-template-columns: 2fr 1.2fr 1.1fr 1fr;
 }
 
 .workspace-list-rows {
@@ -398,7 +398,7 @@
 /* ─── Wallet Activity Ledger rows ─── */
 .activity-list-row {
   display: grid;
-  grid-template-columns: 2fr 1.2fr 1fr;
+  grid-template-columns: 2fr 1.2fr 1.1fr 1fr;
   align-items: center;
   padding: var(--space-5) var(--space-6);
   background: var(--bg-card);
@@ -459,6 +459,9 @@
   font-weight: var(--weight-bold);
   text-align: right;
 }
+
+.activity-row-tx { min-width: 0; font: 500 var(--text-xs)/1 var(--font-mono); }
+.activity-row-tx .explorer-hash-link { display: inline-flex; align-items: center; gap: 0.35rem; }
 
 .negative-impact {
   color: var(--color-error);

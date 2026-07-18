@@ -227,9 +227,10 @@ export function WalletActivityView() {
         </div>
       ) : (
         <div className="workspace-list-container">
-          <div className="workspace-list-header hide-mobile">
+          <div className="workspace-list-header hide-mobile wallet-activity-header">
             <span>Operation Details</span>
             <span>Logged Time</span>
+            <span>Stellar Tx</span>
             <span style={{ textAlign: 'right' }}>Value Impact</span>
           </div>
 
@@ -248,6 +249,15 @@ export function WalletActivityView() {
 
                 <div className="activity-row-date">
                   <span>{formatDate(item.createdAt)}</span>
+                </div>
+
+                <div className="activity-row-tx">
+                  {item.explorerUrl ? (
+                    <a href={item.explorerUrl} target="_blank" rel="noopener noreferrer" className="explorer-hash-link" aria-label="View transaction on Stellar Explorer">
+                      <code>{item.txHash.slice(0, 10)}…</code>
+                      <ArrowSquareOut size={12} />
+                    </a>
+                  ) : <span>—</span>}
                 </div>
 
                 <div className="activity-row-value">

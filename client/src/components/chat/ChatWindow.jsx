@@ -6,7 +6,7 @@ import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
 import ReceiptCard from './ReceiptCard';
 import TypingIndicator from './TypingIndicator';
-import { List, Lightning, ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders } from '@phosphor-icons/react';
+import { Lightning, ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders } from '@phosphor-icons/react';
 
 const SUGGESTIONS = [
   'Find wireless audio under 300 XLM',
@@ -15,7 +15,7 @@ const SUGGESTIONS = [
   'Find a gift under 500 XLM',
 ];
 
-export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged }) {
+export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged }) {
   const { user } = useAuth();
   const toast = useToast();
   const [messages, setMessages] = useState([]);
@@ -135,7 +135,6 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
     sendMessage('Cancel purchase');
   };
 
-
   const handleSuggestion = (text) => {
     sendMessage(text);
   };
@@ -174,7 +173,6 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
         </div>
       );
     }
-
 
     // Purchase failed
     if (msg.type === 'purchase_failed') {
@@ -233,9 +231,6 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
       <div className="chat-container">
         <div className="chat-header">
           <div className="chat-header-title">
-            <button className="chat-mobile-toggle" onClick={onToggleSidebar} aria-label="Open navigation">
-              <List size={20} />
-            </button>
             <Lightning size={18} weight="fill" color="var(--color-accent)" />
             <h2>JarvisPayz Agent</h2>
           </div>
@@ -252,9 +247,6 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-title">
-          <button className="chat-mobile-toggle" onClick={onToggleSidebar} aria-label="Open navigation">
-            <List size={20} />
-          </button>
           <Lightning size={20} weight="fill" color="var(--color-accent)" />
           <div>
             <h2>JarvisPayz Agent</h2>
@@ -283,7 +275,7 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
             </div>
             <h3>What would you like to buy?</h3>
             <p>
-              Tell me what you\'re looking for and I\'ll find the best option
+              Tell me what you're looking for and I'll find the best option
               across your connected stores.
             </p>
             <div className="chat-suggestions">
