@@ -44,11 +44,9 @@ export default function Dashboard() {
 
       <div className="login-card glass-card">
         <div className="login-card-header">
-          <div className="navbar-logo" style={{ justifyContent: 'center' }}>
-            <div className="navbar-logo-icon">
-              <Lightning size={18} weight="fill" />
-            </div>
-            <span>JarvisPayz</span>
+          <div className="navbar-logo" style={{ justifyContent: 'center', gap: '10px' }}>
+            <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 36, height: 36, display: 'block' }} />
+            <span style={{ fontSize: '1.45rem', fontWeight: 700 }}>JarvisPayz</span>
           </div>
           <h2>Welcome Back</h2>
           <p>Sign in with Google to access your AI shopping agent and managed Stellar wallet.</p>

@@ -231,7 +231,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       <div className="chat-container">
         <div className="chat-header">
           <div className="chat-header-title">
-            <Lightning size={18} weight="fill" color="var(--color-accent)" />
+            <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 22, height: 22, marginRight: 8, display: 'block' }} />
             <h2>JarvisPayz Agent</h2>
           </div>
         </div>
@@ -247,7 +247,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-title">
-          <Lightning size={20} weight="fill" color="var(--color-accent)" />
+          <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 26, height: 26, marginRight: 8, display: 'block' }} />
           <div>
             <h2>JarvisPayz Agent</h2>
             <div className="chat-header-status">Online</div>

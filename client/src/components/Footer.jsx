@@ -8,9 +8,7 @@ export default function Footer() {
         <div className="footer-content">
           <div className="footer-brand">
             <Link to="/" className="navbar-logo">
-              <div className="navbar-logo-icon">
-                <Lightning size={16} weight="fill" />
-              </div>
+              <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 20, height: 20, marginRight: 8, display: 'block' }} />
               <span>JarvisPayz</span>
             </Link>
             <p>

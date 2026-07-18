@@ -84,11 +84,9 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         {/* Header */}
         <div className="sidebar-header">
-          <div className="navbar-logo" onClick={() => { onClose(); navigate('/'); }} style={{ cursor: 'pointer' }}>
-            <div className="navbar-logo-icon">
-              <Lightning size={16} weight="fill" />
-            </div>
-            <span>JarvisPayz</span>
+          <div className="navbar-logo" onClick={() => { onClose(); navigate('/'); }} style={{ cursor: 'pointer', gap: '8px' }}>
+            <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 35, height: 35, display: 'block' }} />
+            <span style={{ fontWeight: 700 }}>JarvisPayz</span>
           </div>
         </div>
 

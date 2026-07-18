@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Wallet, ArrowRight } from '@phosphor-icons/react';
 import '../styles/landing.css';
 
-const Navbar = () => {
+const Navbar = ({ onSignIn }) => {
   const [scrolled, setScrolled] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -20,8 +20,8 @@ const Navbar = () => {
   return (
     <div className="island-nav-wrapper">
       <nav className={`island-nav ${scrolled ? 'scrolled' : ''}`} aria-label="Primary navigation">
-        <a href="/" className="island-logo">
-          <Wallet weight="light" size={24} color="var(--color-accent)" />
+        <a href="/" className="island-logo" style={{ gap: '8px' }}>
+          <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 28, height: 28, display: 'block' }} />
           JarvisPayz
         </a>
         
@@ -34,7 +34,7 @@ const Navbar = () => {
         <div className="island-actions">
           <button 
             className="btn-pill btn-pill-primary"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => user ? navigate('/dashboard') : onSignIn()}
           >
             {user ? 'Console' : 'Sign In'}
             <div className="btn-nested-icon">

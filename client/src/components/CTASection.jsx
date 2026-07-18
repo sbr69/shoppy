@@ -4,7 +4,7 @@ import '../styles/landing.css';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const CTASection = () => {
+const CTASection = ({ onSignIn }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -23,7 +23,7 @@ const CTASection = () => {
           </div>
         </button>
       ) : (
-        <button className="btn-pill btn-pill-primary" onClick={() => navigate('/dashboard')}>
+        <button className="btn-pill btn-pill-primary" onClick={() => onSignIn()}>
           Initialize Jarvis
           <div className="btn-nested-icon">
             <ArrowRight weight="light" size={16} />

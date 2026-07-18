@@ -4,7 +4,7 @@ import '../styles/landing.css';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const Hero = () => {
+const Hero = ({ onSignIn }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -12,8 +12,7 @@ const Hero = () => {
     <section className="hero-awwwards">
       <div className="hero-grid">
         <aside className="hero-index" aria-hidden="true">
-          <span>01</span>
-          <span>AGENT<br />COMMERCE</span>
+          <span>SBR</span>
         </aside>
         <div className="hero-content">
           <div className="eyebrow-tag">Controlled agentic commerce</div>
@@ -26,7 +25,7 @@ const Hero = () => {
             A calm, conversational way to search your connected stores, review every checkout, and pay through your protected Stellar smart wallet.
           </p>
           <div className="hero-actions">
-             <button className="btn-pill btn-pill-primary" onClick={() => navigate('/dashboard')}>
+             <button className="btn-pill btn-pill-primary" onClick={() => user ? navigate('/dashboard') : onSignIn()}>
                {user ? 'Enter Console' : 'Initialize Agent'}
                <div className="btn-nested-icon">
                  <ArrowRight weight="light" size={16} />
