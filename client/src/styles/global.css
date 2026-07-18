@@ -3,7 +3,7 @@
    Reset, base typography, utility classes
    ═══════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @import './design-tokens.css';
 
@@ -123,7 +123,7 @@ p {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   border-radius: var(--radius-md);
-  transition: all var(--duration-normal) var(--ease-spring);
+  transition: transform var(--duration-fast) var(--ease-spring), background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
   white-space: nowrap;
   position: relative;
   overflow: hidden;
@@ -136,56 +136,59 @@ p {
   inset: 0;
   border-radius: inherit;
   opacity: 0;
-  transition: opacity var(--duration-normal) var(--ease-out);
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .btn:active {
-  transform: scale(0.95) !important;
+  transform: scale(0.97) !important;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-primary-light), var(--color-primary-dark));
-  color: white;
+  background: var(--color-primary);
+  color: var(--text-inverse);
+  border: 1px solid var(--color-primary);
   box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md), var(--shadow-glow-primary);
+  background: var(--color-primary-light);
+  border-color: var(--color-primary-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-primary:active {
-  transform: translateY(0) scale(0.95) !important;
+  transform: translateY(0) scale(0.97) !important;
 }
 
 .btn-secondary {
   background: var(--bg-card);
   color: var(--text-primary);
   border: 1px solid var(--border-default);
-  backdrop-filter: blur(12px);
   box-shadow: var(--shadow-sm);
 }
 
 .btn-secondary:hover {
   border-color: var(--border-hover);
-  background: var(--bg-card-hover);
+  background: var(--bg-secondary);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
 .btn-secondary:active {
-  transform: translateY(0) scale(0.95) !important;
+  transform: translateY(0) scale(0.97) !important;
 }
 
 .btn-ghost {
   color: var(--text-secondary);
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
 .btn-ghost:hover {
   color: var(--text-primary);
-  background: rgba(15, 23, 42, 0.04);
+  background: var(--bg-tertiary);
 }
 
 .btn-lg {

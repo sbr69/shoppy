@@ -1,8 +1,10 @@
+import { Lightning } from '@phosphor-icons/react';
+
 export default function TypingIndicator() {
   return (
     <div className="typing-indicator">
       <div className="message-avatar" style={{
-        background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
+        background: 'var(--color-accent)',
         color: 'white',
         width: 32,
         height: 32,
@@ -13,7 +15,7 @@ export default function TypingIndicator() {
         justifyContent: 'center',
         fontSize: '0.875rem',
       }}>
-        ⚡
+        <Lightning size={14} weight="fill" />
       </div>
       <div className="typing-dots">
         <div className="typing-dot" />

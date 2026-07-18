@@ -117,7 +117,7 @@
 
 .form-input:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(179, 143, 77, 0.08);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.08);
   background: var(--bg-card);
 }
 
@@ -296,9 +296,9 @@
 }
 
 .site-status-toggle.active {
-  background: rgba(179, 143, 77, 0.08);
+  background: rgba(13, 148, 136, 0.08);
   color: var(--color-accent);
-  border-color: rgba(179, 143, 77, 0.15);
+  border-color: rgba(13, 148, 136, 0.15);
 }
 
 .site-status-toggle.paused {

@@ -1,57 +1,419 @@
 import { useEffect, useState } from 'react';
-import { ArrowSquareOut, CheckCircle, Clock, Package, ShieldCheck, Wallet } from '@phosphor-icons/react';
+import {
+  ArrowSquareOut,
+  CheckCircle,
+  Clock,
+  Package,
+  ShieldCheck,
+  Wallet,
+  PlusCircle,
+  Storefront,
+  ArrowsClockwise,
+} from '@phosphor-icons/react';
 import api from '../../services/api';
 
-const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+const formatDate = (value) =>
+  value
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    : '—';
 
 export function OrdersView() {
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [workflow, setWorkflow] = useState({});
+
   useEffect(() => {
     let live = true;
-    const load = () => api.get('/purchases').then(({ data }) => live && setPurchases(data.purchases || [])).catch(() => live && setPurchases([])).finally(() => live && setLoading(false));
+    const load = () =>
+      api
+        .get('/purchases')
+        .then(({ data }) => live && setPurchases(data.purchases || []))
+        .catch(() => live && setPurchases([]))
+        .finally(() => live && setLoading(false));
     void load();
-    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 12_000);
-    const visible = () => { if (document.visibilityState === 'visible') void load(); };
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 12_000);
+    const visible = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
     document.addEventListener('visibilitychange', visible);
-    return () => { live = false; window.clearInterval(interval); document.removeEventListener('visibilitychange', visible); };
+    return () => {
+      live = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', visible);
+    };
   }, []);
+
   const toggleWorkflow = async (id) => {
     if (expandedOrder === id) return setExpandedOrder(null);
     setExpandedOrder(id);
     if (workflow[id]) return;
-    try { const { data } = await api.get(`/purchases/${id}/workflow`); setWorkflow((current) => ({ ...current, [id]: data.events || [] })); } catch { setWorkflow((current) => ({ ...current, [id]: [] })); }
+    try {
+      const { data } = await api.get(`/purchases/${id}/workflow`);
+      setWorkflow((current) => ({ ...current, [id]: data.events || [] }));
+    } catch {
+      setWorkflow((current) => ({ ...current, [id]: [] }));
+    }
   };
-  return <WorkspaceShell icon={<Package size={22} weight="duotone" />} title="Orders" subtitle="Every merchant order and guarded Stellar payment in one place.">
-    {loading ? <div className="workspace-empty">Loading orders…</div> : purchases.length === 0 ? <div className="workspace-empty"><Package size={34} /><h3>No orders yet</h3><p>Search a connected store from a new chat when you are ready.</p></div> : <div className="orders-list">{purchases.map((order) => <article className="order-card" key={order.id}>
-      {order.product_image ? <img src={order.product_image} alt="" /> : <div className="order-image"><Package size={22} /></div>}
-      <div className="order-main"><strong>{order.product_name}</strong><span>{order.site_name || 'Connected merchant'} · {formatDate(order.created_at)}</span><span className="order-stage-copy">{order.statusInfo?.description}</span><code>{order.stellar_tx_hash ? `${order.stellar_tx_hash.slice(0, 12)}…` : 'Transaction pending'}</code>{expandedOrder === order.id && <ol className="order-workflow">{(workflow[order.id] || []).length ? workflow[order.id].map((event) => <li key={event.id}><span className={`workflow-dot ${event.status}`}></span><div><b>{event.stage.replaceAll('_', ' ')}</b><p>{event.detail || event.status}</p><time>{formatDate(event.created_at)}</time></div></li>) : <li className="workflow-empty">No workflow entries are available yet.</li>}</ol>}</div>
-      <div className="order-meta"><b>{Number(order.price_xlm).toFixed(7)} XLM</b><span className={`status-pill ${order.statusInfo?.stage || order.status}`}>{order.statusInfo?.label || order.status.replaceAll('_', ' ')}</span>{order.reconciliation_run_after && order.status !== 'confirmed' && order.status !== 'failed' && <span className="retry-copy">Retry {formatDate(order.reconciliation_run_after)}</span>}<button className="order-details-button" onClick={() => void toggleWorkflow(order.id)}>{expandedOrder === order.id ? 'Hide activity' : 'View activity'}</button>{order.explorerUrl && <a href={order.explorerUrl} target="_blank" rel="noreferrer">Explorer <ArrowSquareOut size={13} /></a>}</div>
-    </article>)}</div>}
-  </WorkspaceShell>;
+
+  return (
+    <WorkspaceShell
+      icon={<Package size={22} weight="fill" />}
+      title="Orders Ledger"
+      subtitle="Complete ledger of merchant order settlements and guarded Stellar payments."
+    >
+      {loading ? (
+        <div className="workspace-loading-state">
+          <div className="spinner-lg" />
+          <p>Loading purchase ledger...</p>
+        </div>
+      ) : purchases.length === 0 ? (
+        <div className="workspace-empty">
+          <Package size={34} />
+          <h3>No purchases recorded</h3>
+          <p>Initiate a transaction with the assistant when you are ready.</p>
+        </div>
+      ) : (
+        <div className="workspace-list-container">
+          <div className="workspace-list-header hide-mobile">
+            <span>Product & Merchant</span>
+            <span>Created At</span>
+            <span>Stellar Tx</span>
+            <span>Amount</span>
+            <span>Status</span>
+            <span style={{ textAlign: 'right' }}>Actions</span>
+          </div>
+
+          <div className="workspace-list-rows">
+            {purchases.map((order) => (
+              <div className="order-row-wrapper" key={order.id}>
+                <article className="order-list-row">
+                  {/* Product */}
+                  <div className="order-row-product">
+                    {order.product_image ? (
+                      <img src={order.product_image} alt="" className="order-thumbnail" />
+                    ) : (
+                      <div className="order-thumbnail-placeholder">
+                        <Package size={18} />
+                      </div>
+                    )}
+                    <div className="order-product-info">
+                      <strong>{order.product_name}</strong>
+                      <span>{order.site_name || 'Connected Merchant'}</span>
+                    </div>
+                  </div>
+
+                  {/* Date */}
+                  <div className="order-row-date">
+                    <span>{formatDate(order.created_at)}</span>
+                  </div>
+
+                  {/* Stellar Hash */}
+                  <div className="order-row-hash">
+                    {order.stellar_tx_hash ? (
+                      order.explorerUrl ? (
+                        <a
+                          href={order.explorerUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="explorer-hash-link"
+                        >
+                          <code>{order.stellar_tx_hash.slice(0, 10)}…</code>
+                          <ArrowSquareOut size={12} />
+                        </a>
+                      ) : (
+                        <code>{order.stellar_tx_hash.slice(0, 10)}…</code>
+                      )
+                    ) : (
+                      <span className="hash-pending">Pending confirmation</span>
+                    )}
+                  </div>
+
+                  {/* Price */}
+                  <div className="order-row-price">
+                    <span>{Number(order.price_xlm).toFixed(7)} XLM</span>
+                  </div>
+
+                  {/* Status */}
+                  <div className="order-row-status">
+                    <span className={`status-pill ${order.statusInfo?.stage || order.status}`}>
+                      {order.statusInfo?.label || order.status.replaceAll('_', ' ')}
+                    </span>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="order-row-actions">
+                    <button className="details-toggle-btn" onClick={() => void toggleWorkflow(order.id)}>
+                      {expandedOrder === order.id ? 'Hide Activity' : 'View Activity'}
+                    </button>
+                  </div>
+                </article>
+
+                {/* Workflow Drawer */}
+                {expandedOrder === order.id && (
+                  <div className="order-workflow-drawer animate-fade-in">
+                    <div className="workflow-drawer-header">
+                      <span>Order Fulfillment Flow</span>
+                      {order.reconciliation_run_after && order.status !== 'confirmed' && order.status !== 'failed' && (
+                        <span className="workflow-retry-tag">
+                          Next sync attempt: {formatDate(order.reconciliation_run_after)}
+                        </span>
+                      )}
+                    </div>
+                    <ol className="order-workflow-steps">
+                      {(workflow[order.id] || []).length ? (
+                        workflow[order.id].map((event) => (
+                          <li key={event.id} className="workflow-step-item">
+                            <span className={`workflow-dot ${event.status}`} />
+                            <div className="workflow-step-content">
+                              <div className="workflow-step-title">
+                                <b>{event.stage.replaceAll('_', ' ')}</b>
+                                <time>{formatDate(event.created_at)}</time>
+                              </div>
+                              <p className="workflow-step-desc">{event.detail || event.status}</p>
+                            </div>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="workflow-empty-step">
+                          <Clock size={16} />
+                          <span>Preparing fulfillment steps...</span>
+                        </li>
+                      )}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </WorkspaceShell>
+  );
 }
 
 export function WalletActivityView() {
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { let live = true; api.get('/wallet/activity').then(({ data }) => live && setActivity(data.activity || [])).catch(() => live && setActivity([])).finally(() => live && setLoading(false)); return () => { live = false; }; }, []);
-  return <WorkspaceShell icon={<Wallet size={22} weight="duotone" />} title="Wallet activity" subtitle="A read-only trail of funding, policy changes, and payments.">
-    {loading ? <div className="workspace-empty">Loading activity…</div> : activity.length === 0 ? <div className="workspace-empty"><Clock size={34} /><h3>No activity yet</h3><p>Funding and purchases will appear here automatically.</p></div> : <div className="activity-list">{activity.map((item) => <div className="activity-row" key={item.id}><div className="activity-icon">{item.type === 'purchase' ? <Package /> : <ShieldCheck />}</div><div><strong>{item.title}</strong><span>{formatDate(item.createdAt)}</span></div><div className="activity-value">{item.amountXlm ? `−${item.amountXlm.toFixed(7)} XLM` : item.status || 'recorded'}</div></div>)}</div>}
-  </WorkspaceShell>;
+
+  useEffect(() => {
+    let live = true;
+    api
+      .get('/wallet/activity')
+      .then(({ data }) => live && setActivity(data.activity || []))
+      .catch(() => live && setActivity([]))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <WorkspaceShell
+      icon={<Wallet size={22} weight="fill" />}
+      title="Wallet Activity Log"
+      subtitle="Complete historical audit trail of funding operations, limits, and smart contract policies."
+    >
+      {loading ? (
+        <div className="workspace-loading-state">
+          <div className="spinner-lg" />
+          <p>Loading activity ledger...</p>
+        </div>
+      ) : activity.length === 0 ? (
+        <div className="workspace-empty">
+          <Clock size={34} />
+          <h3>No wallet operations yet</h3>
+          <p>Operations will be recorded as soon as you fund your wallet or execute purchases.</p>
+        </div>
+      ) : (
+        <div className="workspace-list-container">
+          <div className="workspace-list-header hide-mobile">
+            <span>Operation Details</span>
+            <span>Logged Time</span>
+            <span style={{ textAlign: 'right' }}>Value Impact</span>
+          </div>
+
+          <div className="workspace-list-rows">
+            {activity.map((item) => (
+              <article className="activity-list-row" key={item.id}>
+                <div className="activity-row-main">
+                  <div className="activity-type-icon">
+                    {item.type === 'purchase' ? <Package size={16} /> : <ShieldCheck size={16} />}
+                  </div>
+                  <div className="activity-title-info">
+                    <strong>{item.title}</strong>
+                    <span>{item.type === 'purchase' ? 'Merchant Payment' : 'Safeguard Policy Update'}</span>
+                  </div>
+                </div>
+
+                <div className="activity-row-date">
+                  <span>{formatDate(item.createdAt)}</span>
+                </div>
+
+                <div className="activity-row-value">
+                  {item.amountXlm ? (
+                    <span className="negative-impact">
+                      −{item.amountXlm.toFixed(7)} XLM
+                    </span>
+                  ) : (
+                    <span className="status-badge-neutral">{item.status || 'Success'}</span>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </WorkspaceShell>
+  );
 }
 
 export function StoresView({ onConnectStore, refreshKey }) {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(null);
-  const load = () => api.get('/sites').then(({ data }) => setSites(data.sites || [])).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [refreshKey]);
-  const sync = async (id) => { setSyncing(id); try { await api.post(`/sites/${id}/policy/sync`); await load(); } finally { setSyncing(null); } };
-  return <WorkspaceShell icon={<ShieldCheck size={22} weight="duotone" />} title="Stores & safeguards" subtitle="Only registered, authenticated merchant APIs can be used by the agent." action={<button className="btn btn-primary" onClick={onConnectStore}><CheckCircle size={16} /> Connect store</button>}>
-    {loading ? <div className="workspace-empty">Loading stores…</div> : sites.length === 0 ? <div className="workspace-empty workspace-empty--stores"><ShieldCheck size={38} /><h3>Connect your first store</h3><p>Sign in on your ecommerce site, approve the connection, and let your agent shop only in that account.</p><button className="btn btn-primary" onClick={onConnectStore}>Connect a store</button></div> : <div className="stores-grid">{sites.map((site) => <article className="store-card" key={site.id}><div><h3>{site.site_name}</h3><p>{site.site_url}</p></div><span className={`status-pill ${site.status}`}>{site.status.replaceAll('_', ' ')}</span><dl><div><dt>Daily limit</dt><dd>{Number(site.spending_cap).toFixed(2)} XLM</dd></div><div><dt>Per order</dt><dd>{Number(site.per_transaction_cap).toFixed(2)} XLM</dd></div><div><dt>On-chain policy</dt><dd>{site.policy_synced_at ? 'Synced' : 'Not synced'}</dd></div></dl>{site.policy_sync_error && <p className="workspace-error">Last sync: {site.policy_sync_error}</p>}<button className="btn btn-secondary" disabled={syncing === site.id} onClick={() => sync(site.id)}>{syncing === site.id ? 'Syncing…' : 'Sync safeguards'}</button></article>)}</div>}
-  </WorkspaceShell>;
+
+  const load = () =>
+    api
+      .get('/sites')
+      .then(({ data }) => setSites(data.sites || []))
+      .finally(() => setLoading(false));
+
+  useEffect(() => {
+    load();
+  }, [refreshKey]);
+
+  const sync = async (id) => {
+    setSyncing(id);
+    try {
+      await api.post(`/sites/${id}/policy/sync`);
+      await load();
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  return (
+    <WorkspaceShell
+      icon={<ShieldCheck size={22} weight="fill" />}
+      title="Connected Stores & Safeguards"
+      subtitle="Manage smart contract spending limits and API access permissions for authorized storefronts."
+      action={
+        <button className="btn btn-primary" onClick={onConnectStore} id="workspace-connect-store-btn">
+          <PlusCircle size={15} weight="bold" />
+          <span>Connect Store</span>
+        </button>
+      }
+    >
+      {loading ? (
+        <div className="workspace-loading-state">
+          <div className="spinner-lg" />
+          <p>Loading store configurations...</p>
+        </div>
+      ) : sites.length === 0 ? (
+        <div className="workspace-empty workspace-empty--stores">
+          <ShieldCheck size={38} />
+          <h3>Connect your first storefront</h3>
+          <p>Integrate your e-commerce profile to restrict agent access and enforce spending limits.</p>
+          <button className="btn btn-primary" onClick={onConnectStore}>
+            <PlusCircle size={15} weight="bold" />
+            <span>Connect store</span>
+          </button>
+        </div>
+      ) : (
+        <div className="workspace-list-container">
+          <div className="workspace-list-header hide-mobile store-table-header">
+            <span>Merchant Channels</span>
+            <span>Channel Status</span>
+            <span>Daily CAP Limit</span>
+            <span>On-Chain Policy</span>
+            <span style={{ textAlign: 'right' }}>Safeguard Action</span>
+          </div>
+
+          <div className="workspace-list-rows">
+            {sites.map((site) => (
+              <article className="store-list-row" key={site.id}>
+                {/* Brand & URL */}
+                <div className="store-row-brand">
+                  <div className="store-avatar">
+                    <Storefront size={18} weight="fill" />
+                  </div>
+                  <div className="store-info">
+                    <strong>{site.site_name}</strong>
+                    <span>{site.site_url}</span>
+                  </div>
+                </div>
+
+                {/* Channel Status */}
+                <div className="store-row-status">
+                  <span className={`status-pill ${site.status}`}>
+                    {site.status.replaceAll('_', ' ')}
+                  </span>
+                </div>
+
+                {/* Daily Cap & Order Limit */}
+                <div className="store-row-limits">
+                  <div className="limit-metric">
+                    <strong>{Number(site.spending_cap).toFixed(2)} XLM</strong>
+                    <span>Cap/order: {Number(site.per_transaction_cap).toFixed(0)} XLM</span>
+                  </div>
+                </div>
+
+                {/* On-Chain policy */}
+                <div className="store-row-policy">
+                  <span className={`policy-sync-tag ${site.policy_synced_at ? 'synced' : 'pending'}`}>
+                    {site.policy_synced_at ? 'Synced' : 'Sync Pending'}
+                  </span>
+                  {site.policy_sync_error && (
+                    <span className="policy-sync-error" title={site.policy_sync_error}>
+                      Error warning
+                    </span>
+                  )}
+                </div>
+
+                {/* Action button */}
+                <div className="store-row-actions">
+                  <button
+                    className="btn btn-secondary store-sync-btn"
+                    disabled={syncing === site.id}
+                    onClick={() => sync(site.id)}
+                  >
+                    {syncing === site.id ? (
+                      <>
+                        <ArrowsClockwise size={14} className="spinner" />
+                        <span>Syncing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowsClockwise size={14} />
+                        <span>Sync Safeguards</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </WorkspaceShell>
+  );
 }
 
-function WorkspaceShell({ icon, title, subtitle, action, children }) { return <main className="workspace"><header className="workspace-header"><div className="workspace-title-icon">{icon}</div><div><h1>{title}</h1><p>{subtitle}</p></div>{action && <div className="workspace-header-action">{action}</div>}</header>{children}</main>; }
+function WorkspaceShell({ icon, title, subtitle, action, children }) {
+  return (
+    <main className="workspace">
+      <header className="workspace-header">
+        <div className="workspace-title-icon">{icon}</div>
+        <div>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
+        </div>
+        {action && <div className="workspace-header-action">{action}</div>}
+      </header>
+      {children}
+    </main>
+  );
+}

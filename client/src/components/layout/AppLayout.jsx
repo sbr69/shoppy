@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
 import ChatWindow from '../chat/ChatWindow';
+import TelemetryPanel from './TelemetryPanel';
 import { OrdersView, StoresView, WalletActivityView } from './WorkspaceViews';
 import api from '../../services/api';
 import ConnectSiteModal from '../settings/ConnectSiteModal';
@@ -12,6 +13,7 @@ export default function AppLayout() {
   const [connectStoreOpen, setConnectStoreOpen] = useState(false);
   const [storeRefreshKey, setStoreRefreshKey] = useState(0);
   const [walletRefreshKey, setWalletRefreshKey] = useState(0);
+  const [telemetryOpen, setTelemetryOpen] = useState(true);
 
   const startNewChat = async () => {
     setView('chat');
@@ -37,14 +39,26 @@ export default function AppLayout() {
         onSessionSelect={(id) => { setSessionId(id); setView('chat'); setSidebarOpen(false); }}
         onConnectStore={() => { setConnectStoreOpen(true); setSidebarOpen(false); }}
         storeRefreshKey={storeRefreshKey}
-        walletRefreshKey={walletRefreshKey}
       />
-      {view === 'chat' && <ChatWindow
-        sessionId={sessionId}
-        onSessionReady={setSessionId}
-        onToggleSidebar={() => setSidebarOpen(prev => !prev)}
-        onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
-      />}
+      {view === 'chat' && (
+        <div className="chat-workspace">
+          <ChatWindow
+            sessionId={sessionId}
+            onSessionReady={setSessionId}
+            onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+            onToggleTelemetry={() => setTelemetryOpen(prev => !prev)}
+            telemetryOpen={telemetryOpen}
+            onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
+          />
+          <TelemetryPanel
+            isOpen={telemetryOpen}
+            onConnectStore={() => setConnectStoreOpen(true)}
+            storeRefreshKey={storeRefreshKey}
+            walletRefreshKey={walletRefreshKey}
+            onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
+          />
+        </div>
+      )}
       {view === 'orders' && <OrdersView />}
       {view === 'wallet' && <WalletActivityView />}
       {view === 'stores' && <StoresView onConnectStore={() => setConnectStoreOpen(true)} refreshKey={storeRefreshKey} />}

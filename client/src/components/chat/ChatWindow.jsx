@@ -6,7 +6,7 @@ import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
 import ReceiptCard from './ReceiptCard';
 import TypingIndicator from './TypingIndicator';
-import { List, Lightning, ShoppingBagOpen, PaperPlaneRight } from '@phosphor-icons/react';
+import { List, Lightning, ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders } from '@phosphor-icons/react';
 
 const SUGGESTIONS = [
   'Buy wireless earbuds under ₹2000',
@@ -15,7 +15,7 @@ const SUGGESTIONS = [
   'Show me mechanical keyboards',
 ];
 
-export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady, onWalletChanged }) {
+export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged }) {
   const { user } = useAuth();
   const toast = useToast();
   const [messages, setMessages] = useState([]);
@@ -180,7 +180,7 @@ export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady,
           <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
           <div className="receipt-card receipt-card--error" style={{ marginLeft: 44, marginTop: 8 }}>
             <div className="receipt-card-header" style={{ color: 'var(--color-error, #ef4444)' }}>
-              <span>&#10007;</span> Payment Failed
+              <XCircle size={16} weight="fill" style={{ marginRight: 6 }} /> Payment Failed
             </div>
             <div className="receipt-card-row">
               <span className="receipt-card-label">Reason</span>
@@ -198,7 +198,7 @@ export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady,
           <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
           <div className="receipt-card" style={{ marginLeft: 44, marginTop: 8 }}>
             <div className="receipt-card-header">
-              &#9203; Purchase Pending
+              <Hourglass size={16} weight="fill" style={{ marginRight: 6, color: 'var(--color-warning)' }} /> Purchase Pending
             </div>
             <div className="receipt-card-row">
               <span className="receipt-card-label">Product</span>
@@ -233,7 +233,7 @@ export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady,
             <button className="chat-mobile-toggle" onClick={onToggleSidebar}>
               <List size={20} />
             </button>
-            <Lightning size={18} weight="fill" color="var(--color-primary)" />
+            <Lightning size={18} weight="fill" color="var(--color-accent)" />
             <h2>JarvisPayz Agent</h2>
           </div>
         </div>
@@ -252,11 +252,20 @@ export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady,
           <button className="chat-mobile-toggle" onClick={onToggleSidebar}>
             <List size={20} />
           </button>
-          <Lightning size={20} weight="fill" color="var(--color-primary)" />
+          <Lightning size={20} weight="fill" color="var(--color-accent)" />
           <div>
             <h2>JarvisPayz Agent</h2>
             <div className="chat-header-status">Online</div>
           </div>
+        </div>
+        <div className="chat-header-actions">
+          <button
+            className={`chat-telemetry-toggle ${telemetryOpen ? 'active' : ''}`}
+            onClick={onToggleTelemetry}
+            title="Toggle Status & Safeguards Dashboard"
+          >
+            <Sliders size={18} weight="bold" />
+          </button>
         </div>
       </div>
 
