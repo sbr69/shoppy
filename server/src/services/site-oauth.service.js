@@ -94,13 +94,47 @@ export async function completeStoreOAuth({ code, state, error, errorDescription 
   } catch (err) { await db`update connected_sites set status = 'pending_authorization', policy_sync_error = ${err.message} where id = ${site.id}`; return { redirectUrl: dashboard({ storeConnection: 'failed' }), error: err.message }; }
 }
 
+export function tokenNeedsRefresh(token, now = Date.now()) {
+  return !token?.expiresAt || new Date(token.expiresAt).getTime() <= now + 60_000;
+}
+
+export async function refreshStoreToken({ token, client, tokenUrl, fetchImpl = fetch, now = Date.now() }) {
+  const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: token.refreshToken, client_id: client.clientId, client_secret: client.clientSecret });
+  const response = await fetchImpl(tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000), redirect: 'error' });
+  if (!response.ok) throw new Error('Store authorization refresh failed. Reconnect the store to continue.');
+  const refreshed = await response.json();
+  if (!refreshed?.access_token) throw new Error('Store authorization refresh did not return an access token');
+  return {
+    ...token,
+    accessToken: refreshed.access_token,
+    refreshToken: refreshed.refresh_token || token.refreshToken,
+    tokenType: refreshed.token_type || token.tokenType || 'Bearer',
+    expiresAt: new Date(now + Number(refreshed.expires_in || 900) * 1000).toISOString(),
+    scope: refreshed.scope || token.scope,
+  };
+}
+
+export async function revokeStoreTokens({ token, client, revocationUrl, fetchImpl = fetch }) {
+  const revoke = async (tokenValue) => {
+    if (!tokenValue) return true;
+    const response = await fetchImpl(revocationUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: tokenValue, client_id: client.clientId, client_secret: client.clientSecret }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return response.ok;
+  };
+  const refreshRevoked = await revoke(token.refreshToken);
+  const accessRevoked = await revoke(token.accessToken);
+  return { remoteRevoked: refreshRevoked && accessRevoked };
+}
+
 export async function getStoreAccessToken(site) {
   const token = JSON.parse(decrypt(Buffer.from(site.auth_token_ciphertext, 'base64'), Buffer.from(site.auth_token_iv, 'base64'), Buffer.from(site.auth_token_tag, 'base64'), tokenScope(site.id)));
-  if (new Date(token.expiresAt).getTime() > Date.now() + 60_000) return token;
-  const client = readClient(site); const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: token.refreshToken, client_id: client.clientId, client_secret: client.clientSecret });
-  const response = await fetch(site.oauth_server_metadata.tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000), redirect: 'error' });
-  if (!response.ok) throw new Error('Store authorization refresh failed. Reconnect the store to continue.'); const refreshed = await response.json();
-  Object.assign(token, { accessToken: refreshed.access_token, refreshToken: refreshed.refresh_token || token.refreshToken, tokenType: refreshed.token_type || token.tokenType, expiresAt: new Date(Date.now() + Number(refreshed.expires_in || 900) * 1000).toISOString(), scope: refreshed.scope || token.scope });
+  if (!tokenNeedsRefresh(token)) return token;
+  const client = readClient(site);
+  Object.assign(token, await refreshStoreToken({ token, client, tokenUrl: site.oauth_server_metadata.tokenUrl }));
   const sealed = encrypt(JSON.stringify(token), tokenScope(site.id)); await getDb()`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${token.expiresAt} where id = ${site.id}`;
   return token;
 }
@@ -132,19 +166,7 @@ export async function disconnectStore(userId, googleSub, siteId) {
       // Revoke the refresh token first because it prevents future access-token
       // renewal. Also send the access token where one exists; conforming stores
       // may invalidate the entire authorization grant on either request.
-      const revoke = async (tokenValue) => {
-        if (!tokenValue) return true;
-        const response = await fetch(revocationUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ token: tokenValue, client_id: client.clientId, client_secret: client.clientSecret }),
-          signal: AbortSignal.timeout(10_000),
-        });
-        return response.ok;
-      };
-      const refreshRevoked = await revoke(token.refreshToken);
-      const accessRevoked = await revoke(token.accessToken);
-      remoteRevoked = refreshRevoked && accessRevoked;
+      ({ remoteRevoked } = await revokeStoreTokens({ token, client, revocationUrl }));
       if (!remoteRevoked) remoteRevocationError = 'The store did not confirm token revocation.';
     } catch (error) {
       remoteRevocationError = error.message || 'Remote token revocation could not be confirmed.';

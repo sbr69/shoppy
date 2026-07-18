@@ -7,14 +7,15 @@ import { getStoreAccessToken } from '../site-oauth.service.js';
  * after the merchant creates a verifiable order through this contract.
  */
 export class EcommerceAdapter extends BaseAdapter {
-  constructor(site) {
+  constructor(site, { accessTokenProvider = getStoreAccessToken } = {}) {
     super(site);
     this.manifest = site.agent_manifest;
+    this.accessTokenProvider = accessTokenProvider;
     if (!this.manifest?.searchUrl || !this.manifest?.prepareUrl || !this.manifest?.confirmUrl) throw new Error('Store agent-commerce metadata is unavailable');
   }
 
   async request(url, options = {}) {
-    const token = await getStoreAccessToken(this.site);
+    const token = await this.accessTokenProvider(this.site);
     const response = await fetch(url, {
       ...options,
       headers: { Accept: 'application/json', Authorization: `${token.tokenType || 'Bearer'} ${token.accessToken}`, ...(options.headers || {}) },

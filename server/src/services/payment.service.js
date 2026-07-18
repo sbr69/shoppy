@@ -8,6 +8,10 @@ import { prepareGuardedSpend, submitGuardedSpend, submitAgentSmartWalletSpend, g
 import { recordWorkflowEvent } from './workflow.service.js';
 import { getAgentKeypairForSigning, getAgentSmartWalletByUserId, getAgentWalletByUserId, getOwnerKeypairForSigning, getWalletByUserId } from './wallet.service.js';
 
+const reconciliationWorkerId = `${process.env.RECONCILIATION_WORKER_ID || process.env.HOSTNAME || 'api'}-${process.pid}`;
+export const reconciliationRetryDelayMs = (attempt) => Math.min(15 * 60_000, Math.max(10_000, 10_000 * (2 ** Math.min(Math.max(attempt - 1, 0), 7))));
+const boundedError = (error) => String(error?.message || 'Merchant confirmation pending').replace(/[\r\n]+/g, ' ').slice(0, 500);
+
 function receiptFor(purchaseIntent, site, product) {
   return {
     purchaseIntentId: purchaseIntent.id,
@@ -170,7 +174,13 @@ export async function submitPurchaseApproval(userId, googleSub, approvalId, sign
 }
 
 export async function getPurchaseHistory(userId) {
-  return getDb()`select p.*, cs.site_name from purchases p left join connected_sites cs on p.site_id = cs.id where p.user_id = ${userId} order by p.created_at desc`;
+  return getDb()`select p.*, cs.site_name, pi.merchant_order_id, pi.state as intent_state,
+    r.run_after as reconciliation_run_after, r.attempts as reconciliation_attempts, r.last_error as reconciliation_error
+    from purchases p
+    left join connected_sites cs on p.site_id = cs.id
+    left join purchase_intents pi on pi.id = p.purchase_intent_id
+    left join reconciliation_jobs r on r.purchase_id = p.id
+    where p.user_id = ${userId} order by p.created_at desc`;
 }
 
 export async function executeCustodialPayment(userId, googleSub, purchaseIntent, site, product) {
@@ -246,19 +256,30 @@ export async function executeCustodialPayment(userId, googleSub, purchaseIntent,
  */
 export async function reconcilePendingPurchases(limit = 25) {
   const db = getDb();
-  const purchases = await db`select p.*, cs.site_url, cs.site_name, cs.adapter_id, cs.agent_manifest, cs.auth_token_ciphertext, cs.auth_token_iv, cs.auth_token_tag, cs.oauth_client_ciphertext, cs.oauth_client_iv, cs.oauth_client_tag, cs.oauth_server_metadata, cs.merchant_stellar_address, cs.merchant_domain_hash, cs.status as site_status, pi.session_id, pi.idempotency_key, pi.merchant_order_id from purchases p join connected_sites cs on cs.id = p.site_id join purchase_intents pi on pi.id = p.purchase_intent_id where p.status in ('pending', 'payment_confirmed') and p.stellar_tx_hash is not null order by p.created_at asc limit ${limit}`;
+  const jobs = await db`select * from claim_reconciliation_jobs(${reconciliationWorkerId}, ${limit})`;
   let reconciled = 0;
-  for (const purchase of purchases) {
+  for (const job of jobs) {
     try {
+      const [purchase] = await db`select p.*, cs.site_url, cs.site_name, cs.adapter_id, cs.agent_manifest, cs.auth_token_ciphertext, cs.auth_token_iv, cs.auth_token_tag, cs.oauth_client_ciphertext, cs.oauth_client_iv, cs.oauth_client_tag, cs.oauth_server_metadata, cs.merchant_stellar_address, cs.merchant_domain_hash, cs.status as site_status, pi.session_id, pi.idempotency_key, pi.merchant_order_id from purchases p join connected_sites cs on cs.id = p.site_id join purchase_intents pi on pi.id = p.purchase_intent_id where p.id = ${job.purchase_id}`;
+      if (!purchase || !['pending', 'payment_confirmed'].includes(purchase.status) || !purchase.stellar_tx_hash) {
+        await db`select complete_reconciliation_job(${job.job_id})`;
+        continue;
+      }
       const finality = await getSorobanTransactionStatus(purchase.stellar_tx_hash);
       if (finality === 'FAILED') {
         await db`update purchases set status = 'failed' where id = ${purchase.id} and status in ('pending', 'payment_confirmed')`;
         await markIntentState(purchase.purchase_intent_id, 'failed', { reserved_xlm: 0 });
         await recordWorkflowEvent({ userId: purchase.user_id, sessionId: purchase.session_id, purchaseIntentId: purchase.purchase_intent_id, stage: 'reconciliation', status: 'failed', detail: 'Soroban reported a failed transaction.', metadata: { txHash: purchase.stellar_tx_hash } });
+        await db`select complete_reconciliation_job(${job.job_id})`;
         reconciled += 1;
         continue;
       }
-      if (finality !== 'SUCCESS') continue;
+      if (finality !== 'SUCCESS') {
+        const detail = `Stellar transaction is ${String(finality).toLowerCase()}; waiting for finality.`;
+        await db`select reschedule_reconciliation_job(${job.job_id}, ${new Date(Date.now() + reconciliationRetryDelayMs(job.attempt)).toISOString()}, ${detail})`;
+        await recordWorkflowEvent({ userId: purchase.user_id, sessionId: purchase.session_id, purchaseIntentId: purchase.purchase_intent_id, stage: 'reconciliation', status: 'pending', detail, metadata: { txHash: purchase.stellar_tx_hash, attempt: job.attempt } });
+        continue;
+      }
       // The purchase row and connected-site row have different primary keys.
       // Build the adapter input with the connected-site id, credentials, and
       // manifest rather than accidentally using the purchase id.
@@ -267,11 +288,21 @@ export async function reconcilePendingPurchases(limit = 25) {
       await db`update purchases set status = 'confirmed', confirmed_at = now() where id = ${purchase.id}`;
       await markIntentState(purchase.purchase_intent_id, 'order_confirmed', { reserved_xlm: 0 });
       await recordWorkflowEvent({ userId: purchase.user_id, sessionId: purchase.session_id, purchaseIntentId: purchase.purchase_intent_id, stage: 'reconciliation', status: 'completed', detail: `Merchant order ${confirmation.orderId || purchase.merchant_order_id} confirmed.`, metadata: { txHash: purchase.stellar_tx_hash } });
+      await db`select complete_reconciliation_job(${job.job_id})`;
       reconciled += 1;
     } catch (error) {
-      // Leave it retryable. A merchant outage must never trigger another payment.
-      await recordWorkflowEvent({ userId: purchase.user_id, sessionId: purchase.session_id, purchaseIntentId: purchase.purchase_intent_id, stage: 'reconciliation', status: 'pending', detail: `Retry pending: ${error.message}` });
+      // A merchant outage must never trigger another payment. The durable job
+      // is released with exponential backoff and can be claimed by any API
+      // instance or external scheduler after a restart.
+      const detail = boundedError(error);
+      await db`select reschedule_reconciliation_job(${job.job_id}, ${new Date(Date.now() + reconciliationRetryDelayMs(job.attempt)).toISOString()}, ${detail})`;
+      const [purchase] = await db`select p.user_id, p.purchase_intent_id, pi.session_id, p.status from purchases p join purchase_intents pi on pi.id = p.purchase_intent_id where p.id = ${job.purchase_id}`;
+      if (purchase?.status === 'confirmed' || purchase?.status === 'failed') {
+        await db`select complete_reconciliation_job(${job.job_id})`;
+      } else if (purchase) {
+        await recordWorkflowEvent({ userId: purchase.user_id, sessionId: purchase.session_id, purchaseIntentId: purchase.purchase_intent_id, stage: 'reconciliation', status: 'pending', detail: `Retry pending: ${detail}`, metadata: { attempt: job.attempt } });
+      }
     }
   }
-  return { examined: purchases.length, reconciled };
+  return { examined: jobs.length, reconciled, workerId: reconciliationWorkerId };
 }

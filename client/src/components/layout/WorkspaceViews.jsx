@@ -7,12 +7,28 @@ const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateS
 export function OrdersView() {
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { let live = true; api.get('/purchases').then(({ data }) => live && setPurchases(data.purchases || [])).catch(() => live && setPurchases([])).finally(() => live && setLoading(false)); return () => { live = false; }; }, []);
+  const [expandedOrder, setExpandedOrder] = useState(null);
+  const [workflow, setWorkflow] = useState({});
+  useEffect(() => {
+    let live = true;
+    const load = () => api.get('/purchases').then(({ data }) => live && setPurchases(data.purchases || [])).catch(() => live && setPurchases([])).finally(() => live && setLoading(false));
+    void load();
+    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 12_000);
+    const visible = () => { if (document.visibilityState === 'visible') void load(); };
+    document.addEventListener('visibilitychange', visible);
+    return () => { live = false; window.clearInterval(interval); document.removeEventListener('visibilitychange', visible); };
+  }, []);
+  const toggleWorkflow = async (id) => {
+    if (expandedOrder === id) return setExpandedOrder(null);
+    setExpandedOrder(id);
+    if (workflow[id]) return;
+    try { const { data } = await api.get(`/purchases/${id}/workflow`); setWorkflow((current) => ({ ...current, [id]: data.events || [] })); } catch { setWorkflow((current) => ({ ...current, [id]: [] })); }
+  };
   return <WorkspaceShell icon={<Package size={22} weight="duotone" />} title="Orders" subtitle="Every merchant order and guarded Stellar payment in one place.">
     {loading ? <div className="workspace-empty">Loading orders…</div> : purchases.length === 0 ? <div className="workspace-empty"><Package size={34} /><h3>No orders yet</h3><p>Search a connected store from a new chat when you are ready.</p></div> : <div className="orders-list">{purchases.map((order) => <article className="order-card" key={order.id}>
       {order.product_image ? <img src={order.product_image} alt="" /> : <div className="order-image"><Package size={22} /></div>}
-      <div className="order-main"><strong>{order.product_name}</strong><span>{order.site_name || 'Connected merchant'} · {formatDate(order.created_at)}</span><code>{order.stellar_tx_hash ? `${order.stellar_tx_hash.slice(0, 12)}…` : 'Transaction pending'}</code></div>
-      <div className="order-meta"><b>{Number(order.price_xlm).toFixed(7)} XLM</b><span className={`status-pill ${order.status}`}>{order.status.replaceAll('_', ' ')}</span>{order.explorerUrl && <a href={order.explorerUrl} target="_blank" rel="noreferrer">Explorer <ArrowSquareOut size={13} /></a>}</div>
+      <div className="order-main"><strong>{order.product_name}</strong><span>{order.site_name || 'Connected merchant'} · {formatDate(order.created_at)}</span><span className="order-stage-copy">{order.statusInfo?.description}</span><code>{order.stellar_tx_hash ? `${order.stellar_tx_hash.slice(0, 12)}…` : 'Transaction pending'}</code>{expandedOrder === order.id && <ol className="order-workflow">{(workflow[order.id] || []).length ? workflow[order.id].map((event) => <li key={event.id}><span className={`workflow-dot ${event.status}`}></span><div><b>{event.stage.replaceAll('_', ' ')}</b><p>{event.detail || event.status}</p><time>{formatDate(event.created_at)}</time></div></li>) : <li className="workflow-empty">No workflow entries are available yet.</li>}</ol>}</div>
+      <div className="order-meta"><b>{Number(order.price_xlm).toFixed(7)} XLM</b><span className={`status-pill ${order.statusInfo?.stage || order.status}`}>{order.statusInfo?.label || order.status.replaceAll('_', ' ')}</span>{order.reconciliation_run_after && order.status !== 'confirmed' && order.status !== 'failed' && <span className="retry-copy">Retry {formatDate(order.reconciliation_run_after)}</span>}<button className="order-details-button" onClick={() => void toggleWorkflow(order.id)}>{expandedOrder === order.id ? 'Hide activity' : 'View activity'}</button>{order.explorerUrl && <a href={order.explorerUrl} target="_blank" rel="noreferrer">Explorer <ArrowSquareOut size={13} /></a>}</div>
     </article>)}</div>}
   </WorkspaceShell>;
 }
