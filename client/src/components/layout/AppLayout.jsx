@@ -1,31 +1,45 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Sidebar from './Sidebar';
 import ChatWindow from '../chat/ChatWindow';
 import TelemetryPanel from './TelemetryPanel';
-import { OrdersView, StoresView, WalletActivityView } from './WorkspaceViews';
+import { OrdersView, WalletActivityView } from './WorkspaceViews';
 import api from '../../services/api';
 import ConnectSiteModal from '../settings/ConnectSiteModal';
+import StoreDetailsModal from '../settings/StoreDetailsModal';
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState('chat');
   const [sessionId, setSessionId] = useState(null);
+  const [sessionBootstrapping, setSessionBootstrapping] = useState(true);
   const [connectStoreOpen, setConnectStoreOpen] = useState(false);
   const [storeRefreshKey, setStoreRefreshKey] = useState(0);
   const [walletRefreshKey, setWalletRefreshKey] = useState(0);
   const [telemetryOpen, setTelemetryOpen] = useState(true);
+  const [selectedStore, setSelectedStore] = useState(null);
+  const initialSessionRequested = useRef(false);
 
-  const startNewChat = async () => {
+  const startNewChat = useCallback(async ({ initial = false } = {}) => {
     setView('chat');
     setSidebarOpen(false);
     try {
-      const { data } = await api.post('/chat/sessions');
+      const { data } = await api.post('/chat/sessions', initial ? { reuseBlank: true } : {});
       setSessionId(data.session.id);
     } catch {
       // The chat endpoint will still create a session if this lightweight request fails.
       setSessionId(null);
+    } finally {
+      if (initial) setSessionBootstrapping(false);
     }
-  };
+  }, []);
+
+  // Each dashboard visit deliberately begins a clean conversation. Older
+  // chats are retained in history and only load when the user selects one.
+  useEffect(() => {
+    if (initialSessionRequested.current) return;
+    initialSessionRequested.current = true;
+    void startNewChat({ initial: true });
+  }, [startNewChat]);
 
   return (
     <div className="app-layout">
@@ -37,10 +51,8 @@ export default function AppLayout() {
         onNewChat={startNewChat}
         activeSessionId={sessionId}
         onSessionSelect={(id) => { setSessionId(id); setView('chat'); setSidebarOpen(false); }}
-        onConnectStore={() => { setConnectStoreOpen(true); setSidebarOpen(false); }}
-        storeRefreshKey={storeRefreshKey}
       />
-      {view === 'chat' && (
+      {view === 'chat' && !sessionBootstrapping && (
         <div className="chat-workspace">
           <ChatWindow
             sessionId={sessionId}
@@ -56,15 +68,21 @@ export default function AppLayout() {
             storeRefreshKey={storeRefreshKey}
             walletRefreshKey={walletRefreshKey}
             onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
+            onStoreSelect={setSelectedStore}
           />
         </div>
       )}
       {view === 'orders' && <OrdersView />}
       {view === 'wallet' && <WalletActivityView />}
-      {view === 'stores' && <StoresView onConnectStore={() => setConnectStoreOpen(true)} refreshKey={storeRefreshKey} />}
       <ConnectSiteModal
         isOpen={connectStoreOpen}
         onClose={() => { setConnectStoreOpen(false); setStoreRefreshKey((value) => value + 1); }}
+      />
+      <StoreDetailsModal
+        site={selectedStore}
+        onClose={() => setSelectedStore(null)}
+        onUpdated={(site) => { setSelectedStore(site); setStoreRefreshKey((value) => value + 1); }}
+        onDisconnected={() => { setSelectedStore(null); setStoreRefreshKey((value) => value + 1); }}
       />
     </div>
   );

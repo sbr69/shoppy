@@ -88,7 +88,7 @@
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: transparent;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .sidebar-nav button svg {
@@ -148,7 +148,11 @@
   justify-content: center;
   padding: 2px;
   border-radius: var(--radius-sm);
-  transition: all var(--duration-fast);
+  transition: color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.sidebar-history-head button:active {
+  transform: scale(0.92);
 }
 
 .sidebar-history-head button:hover {
@@ -169,7 +173,7 @@
   font-weight: var(--weight-bold);
   color: var(--text-secondary);
   background: transparent;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
   cursor: pointer;
 }
 
@@ -206,7 +210,11 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.sidebar-session:active {
+  transform: scale(0.98);
 }
 
 .sidebar-session:hover {
@@ -285,7 +293,11 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  transition: all var(--duration-fast);
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.sidebar-wallet-address:active {
+  transform: scale(0.98);
 }
 
 .sidebar-wallet-address:hover {
@@ -411,10 +423,14 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  transition: all var(--duration-fast);
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
   margin-top: var(--space-2);
   background: transparent;
   cursor: pointer;
+}
+
+.sidebar-add-site:active {
+  transform: scale(0.97);
 }
 
 .sidebar-add-site:hover {
@@ -516,6 +532,11 @@
   background: var(--bg-card);
   cursor: pointer;
   margin-right: var(--space-2);
+  transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.chat-mobile-toggle:active {
+  transform: scale(0.95);
 }
 
 /* ─── Messages Area ─── */
@@ -849,7 +870,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   padding: var(--space-2) var(--space-3);
-  transition: all var(--duration-fast) var(--ease-fluid);
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
   box-shadow: var(--shadow-sm);
 }
 
@@ -885,13 +906,17 @@
   align-items: center;
   justify-content: center;
   font-size: var(--text-md);
-  transition: all var(--duration-fast) var(--ease-fluid);
+  transition: background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
   cursor: pointer;
 }
 
 .chat-send-btn:hover {
   background: var(--color-primary-light);
-  transform: scale(1.02);
+  transform: translateY(-1px);
+}
+
+.chat-send-btn:active {
+  transform: scale(0.95);
 }
 
 .chat-send-btn:disabled {
@@ -1292,7 +1317,11 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.telemetry-wallet-address:active {
+  transform: scale(0.98);
 }
 
 .telemetry-wallet-address:hover {
@@ -1420,10 +1449,14 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  transition: all var(--duration-fast);
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
   margin-top: var(--space-2);
   background: transparent;
   cursor: pointer;
+}
+
+.telemetry-add-site-btn:active {
+  transform: scale(0.97);
 }
 
 .telemetry-add-site-btn:hover {
@@ -1474,7 +1507,11 @@
   border: 1px solid var(--border-default);
   background: var(--bg-card);
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.chat-telemetry-toggle:active {
+  transform: scale(0.95);
 }
 
 .chat-telemetry-toggle:hover {

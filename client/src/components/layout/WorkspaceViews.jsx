@@ -7,7 +7,6 @@ import {
   Wallet,
   PlusCircle,
   Storefront,
-  ArrowsClockwise,
 } from '@phosphor-icons/react';
 import api from '../../services/api';
 
@@ -272,7 +271,6 @@ export function WalletActivityView() {
 export function StoresView({ onConnectStore, refreshKey }) {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(null);
 
   const load = () =>
     api
@@ -283,16 +281,6 @@ export function StoresView({ onConnectStore, refreshKey }) {
   useEffect(() => {
     load();
   }, [refreshKey]);
-
-  const sync = async (id) => {
-    setSyncing(id);
-    try {
-      await api.post(`/sites/${id}/policy/sync`);
-      await load();
-    } finally {
-      setSyncing(null);
-    }
-  };
 
   return (
     <WorkspaceShell
@@ -328,7 +316,7 @@ export function StoresView({ onConnectStore, refreshKey }) {
             <span>Channel Status</span>
             <span>Daily CAP Limit</span>
             <span>On-Chain Policy</span>
-            <span style={{ textAlign: 'right' }}>Safeguard Action</span>
+            <span style={{ textAlign: 'right' }}>Safeguard status</span>
           </div>
 
           <div className="workspace-list-rows">
@@ -372,25 +360,9 @@ export function StoresView({ onConnectStore, refreshKey }) {
                   )}
                 </div>
 
-                {/* Action button */}
+                {/* Policies are synchronized automatically on authorization and changes. */}
                 <div className="store-row-actions">
-                  <button
-                    className="btn btn-secondary store-sync-btn"
-                    disabled={syncing === site.id}
-                    onClick={() => sync(site.id)}
-                  >
-                    {syncing === site.id ? (
-                      <>
-                        <ArrowsClockwise size={14} className="spinner" />
-                        <span>Syncing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ArrowsClockwise size={14} />
-                        <span>Sync Safeguards</span>
-                      </>
-                    )}
-                  </button>
+                  <span className="store-auto-policy">Automatic</span>
                 </div>
               </article>
             ))}

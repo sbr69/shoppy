@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { addSite, getUserSites, updateSite, removeSite, syncSitePolicy } from '../services/site.service.js';
+import { addSite, getUserSites, updateSite, removeSite } from '../services/site.service.js';
 import { completeStoreOAuth, disconnectStore, startStoreOAuth } from '../services/site-oauth.service.js';
 
 const router = Router();
@@ -50,7 +50,7 @@ router.post('/', authenticate, async (req, res) => {
  */
 router.patch('/:id', authenticate, async (req, res) => {
   try {
-    const site = await updateSite(req.user.userId, req.params.id, req.body);
+    const site = await updateSite(req.user.userId, req.user.googleSub, req.params.id, req.body);
     res.json({ site });
   } catch (err) {
     if (err.message === 'Site not found') {
@@ -77,16 +77,6 @@ router.get('/oauth/callback', async (req, res) => {
   } catch (error) {
     console.error('Store OAuth callback failed:', error.message);
     res.redirect(303, `${process.env.CLIENT_URL || 'http://localhost:5173'}/dashboard?storeConnection=failed`);
-  }
-});
-
-router.post('/:id/policy/sync', authenticate, async (req, res) => {
-  try {
-    const result = await syncSitePolicy(req.user.userId, req.user.googleSub, req.params.id);
-    res.json(result);
-  } catch (error) {
-    console.error('Policy sync error:', error.message);
-    res.status(error.message === 'Site not found' ? 404 : 400).json({ error: error.message });
   }
 });
 

@@ -9,10 +9,10 @@ import TypingIndicator from './TypingIndicator';
 import { List, Lightning, ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders } from '@phosphor-icons/react';
 
 const SUGGESTIONS = [
-  'Buy wireless earbuds under ₹2000',
-  'Find me a laptop bag',
-  'Get 10 pens',
-  'Show me mechanical keyboards',
+  'Find wireless audio under 300 XLM',
+  'Show me a practical travel accessory',
+  'Browse useful desk accessories',
+  'Find a gift under 500 XLM',
 ];
 
 export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged }) {
@@ -283,7 +283,7 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
             </div>
             <h3>What would you like to buy?</h3>
             <p>
-              Tell me what you\'re looking for and I\'ll find the best deal
+              Tell me what you\'re looking for and I\'ll find the best option
               across your connected stores.
             </p>
             <div className="chat-suggestions">

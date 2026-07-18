@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { processMessage, getOrCreateSession, getSessionMessages, listSessions, createSession, getSessionForUser, archiveSession } from '../services/agent.service.js';
+import { processMessage, getOrCreateSession, getSessionMessages, listSessions, createSession, getSessionForUser, archiveSession, renameSession } from '../services/agent.service.js';
 import { validateChatMessage } from '../services/validation.service.js';
 import { chatMessageLimiter, chatReadLimiter } from '../middleware/rateLimiter.js';
 
@@ -61,7 +61,8 @@ router.get('/history', authenticate, chatReadLimiter, async (req, res) => {
   }
 });
 router.get('/sessions', authenticate, chatReadLimiter, async (req,res,next) => { try { res.json({ sessions: await listSessions(req.user.userId) }); } catch (error) { next(error); } });
-router.post('/sessions', authenticate, chatReadLimiter, async (req,res,next) => { try { res.status(201).json({ session: await createSession(req.user.userId) }); } catch (error) { next(error); } });
+router.post('/sessions', authenticate, chatReadLimiter, async (req,res,next) => { try { const session = req.body?.reuseBlank ? await getOrCreateSession(req.user.userId) : await createSession(req.user.userId); res.status(201).json({ session }); } catch (error) { next(error); } });
+router.patch('/sessions/:id', authenticate, chatReadLimiter, async (req, res, next) => { try { const session = await renameSession(req.user.userId, req.params.id, req.body?.title); if (!session) return res.status(404).json({ error: 'Chat session not found' }); res.json({ session }); } catch (error) { if (error.message === 'Chat name is required') return res.status(400).json({ error: error.message }); next(error); } });
 router.delete('/sessions/:id', authenticate, chatReadLimiter, async (req, res, next) => { try { const session = await archiveSession(req.user.userId, req.params.id); if (!session) return res.status(404).json({ error: 'Chat session not found' }); res.json({ success: true }); } catch (error) { next(error); } });
 
 export default router;

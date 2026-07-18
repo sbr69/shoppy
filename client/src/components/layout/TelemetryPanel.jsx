@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from '@phosphor-icons/react';
 
-export default function TelemetryPanel({ isOpen, onConnectStore, storeRefreshKey, walletRefreshKey, onWalletChanged }) {
+export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, storeRefreshKey, walletRefreshKey, onWalletChanged }) {
   const toast = useToast();
   const [wallet, setWallet] = useState(null);
   const [walletLoading, setWalletLoading] = useState(true);
@@ -186,7 +186,7 @@ export default function TelemetryPanel({ isOpen, onConnectStore, storeRefreshKey
             ) : sites.length > 0 ? (
               <div className="telemetry-sites-grid">
                 {sites.map((site) => (
-                  <div key={site.id} className="telemetry-site-item">
+                  <button key={site.id} className="telemetry-site-item telemetry-site-item--button" onClick={() => onStoreSelect?.(site)} aria-label={`Manage ${site.site_name}`}>
                     <div className="telemetry-site-favicon">
                       <Storefront size={16} weight="duotone" />
                     </div>
@@ -198,7 +198,7 @@ export default function TelemetryPanel({ isOpen, onConnectStore, storeRefreshKey
                       </div>
                     </div>
                     <div className={`telemetry-site-status ${site.status === 'paused' ? 'paused' : ''}`} />
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -212,17 +212,6 @@ export default function TelemetryPanel({ isOpen, onConnectStore, storeRefreshKey
           </div>
         </section>
 
-        {/* Policy Safeguards info */}
-        <section className="telemetry-section telemetry-safeguards-info">
-          <div className="telemetry-section-title">
-            <ShieldCheck size={14} weight="bold" />
-            <span>On-chain Safeguards</span>
-          </div>
-          <p>
-            Your spending policies and API connection authorizations are enforced directly by smart contracts on the
-            Stellar testnet.
-          </p>
-        </section>
       </div>
     </aside>
   );

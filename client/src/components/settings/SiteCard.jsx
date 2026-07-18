@@ -2,12 +2,14 @@ import { useState } from 'react';
 import api from '../../services/api';
 import { Storefront, Pencil, Plug } from '@phosphor-icons/react';
 import { useToast } from '../../contexts/ToastContext';
+import ConfirmDialog from '../common/ConfirmDialog';
 
 export default function SiteCard({ site, onUpdate, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [cap, setCap] = useState(site.spending_cap);
   const [saving, setSaving] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const toast = useToast();
 
   const handleSaveCap = async () => {
@@ -34,11 +36,11 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
   };
 
   const handleDisconnect = async () => {
-    if (!confirm(`Disconnect "${site.site_name}"? The agent will lose access until you connect it again.`)) return;
     try {
       setDisconnecting(true);
       const { data } = await api.post(`/sites/${site.id}/disconnect`);
       onRemove(site.id);
+      setConfirmingDisconnect(false);
       if (data.remoteRevoked === false || data.policyRevoked === false) {
         const detail = data.policyRevoked === false
           ? 'On-chain rule removal could not be confirmed; support should retry it.'
@@ -114,7 +116,7 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
       <div className="site-card-footer">
         <button
           className="btn btn-ghost site-remove-btn"
-          onClick={handleDisconnect}
+          onClick={() => setConfirmingDisconnect(true)}
           disabled={disconnecting}
         >
           {disconnecting ? (
@@ -127,6 +129,15 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
           )}
         </button>
       </div>
+      <ConfirmDialog
+        isOpen={confirmingDisconnect}
+        title={`Disconnect ${site.site_name}?`}
+        description="The agent will immediately lose access to this store. You can connect it again later."
+        confirmLabel="Disconnect store"
+        onConfirm={handleDisconnect}
+        onClose={() => setConfirmingDisconnect(false)}
+        busy={disconnecting}
+      />
     </div>
   );
 }

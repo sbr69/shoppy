@@ -46,7 +46,7 @@ async function handleSearch(userId, sessionId, intent) {
   const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
   if (!sites.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No authorized stores are active.' });
-    return { type: 'text', content: 'You do not have an active, authorized store.' };
+    return { type: 'text', content: 'I need an active store before I can search. Connect a store from the right-hand panel, complete its sign-in, then tell me what you need.' };
   }
   const queries = retrievalQueries(intent);
   if (!queries.length) return { type: 'text', content: 'Tell me a little more about the product you want me to find.' };
@@ -54,23 +54,36 @@ async function handleSearch(userId, sessionId, intent) {
     (await new EcommerceAdapter(site).searchProducts(query, { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
       .map((product) => ({ ...product, siteId: site.id, retrievalQuery: query })),
   )));
-  const products = [...new Map(results
+  let products = [...new Map(results
     .filter((result) => result.status === 'fulfilled')
     .flatMap((result) => result.value)
     .map((product) => [`${product.siteId}:${product.id}`, product])).values()];
+  // Some merchant catalogs only match a narrow title term. If the semantic
+  // query ladder finds nothing, request each store's bounded live catalogue
+  // and let the semantic ranker decide whether any item actually fits.
+  if (!products.length) {
+    const browseResults = await Promise.allSettled(sites.map(async (site) =>
+      (await new EcommerceAdapter(site).searchProducts('', { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
+        .map((product) => ({ ...product, siteId: site.id, retrievalQuery: 'catalog browse' })),
+    ));
+    products = [...new Map(browseResults
+      .filter((result) => result.status === 'fulfilled')
+      .flatMap((result) => result.value)
+      .map((product) => [`${product.siteId}:${product.id}`, product])).values()];
+  }
   if (!products.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
-    return { type: 'text', content: 'No live, in-stock products matched your request in authorized stores.' };
+    return { type: 'text', content: `I searched your authorized stores for ${intent.product} using several meaning-based catalog queries, but none returned a live, in-stock match. I have not reserved an order or moved any funds.` };
   }
   const { bestMatch, reasoning } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
-  if (!bestMatch || !site) return { type: 'text', content: 'I could not safely identify a product to purchase.' };
+  if (!bestMatch || !site) return { type: 'text', content: `I found catalog items, but none were a safe semantic fit for “${intent.rawQuery}”. I will not guess or prepare a checkout. Try adding one preference or a different budget.` };
   const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
   const [created] = await db`
     insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
     values (${userId}, ${sessionId}, ${site.id}, ${db.json(bestMatch)}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
   await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: created.id, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: created.quantity, queries } });
-  return { type: 'product_suggestion', content: `I found a live match at ${site.site_name}. I will verify the merchant total before any payment.`, metadata: { product: bestMatch, reasoning, purchaseIntentId: created.id, quantity: created.quantity, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
+  return { type: 'product_suggestion', content: `I found ${bestMatch.name} at ${site.site_name}. ${reasoning} It is live and in stock. Review it when you are ready; I will only verify the merchant total after your first approval, and I will ask again before any payment.`, metadata: { product: bestMatch, reasoning, purchaseIntentId: created.id, quantity: created.quantity, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 
 async function findIntent(userId, sessionId, requestedId) {
@@ -170,12 +183,31 @@ async function handleCancel(userId, sessionId) {
 
 export async function getOrCreateSession(userId) {
   const db = getDb();
-  let [session] = await db`select * from chat_sessions where user_id = ${userId} and archived_at is null order by updated_at desc limit 1`;
-  if (!session) [session] = await db`insert into chat_sessions (user_id) values (${userId}) returning *`;
-  return session;
+  // Reuse an untouched draft on dashboard entry. An explicit New Chat action
+  // still creates another session, but refreshes and re-entry do not clutter
+  // history with duplicate empty conversations.
+  return db.begin(async (tx) => {
+    // Serialize only this user's draft lookup/create. This prevents two
+    // concurrent page-entry requests from both inserting blank sessions.
+    await tx`select pg_advisory_xact_lock(hashtext(${userId}))`;
+    const [draft] = await tx`
+      select session.* from chat_sessions session
+      where session.user_id = ${userId} and session.archived_at is null
+        and not exists (select 1 from messages where messages.session_id = session.id)
+      order by session.updated_at desc limit 1`;
+    if (draft) return draft;
+    const [created] = await tx`insert into chat_sessions (user_id) values (${userId}) returning *`;
+    return created;
+  });
 }
 export async function getSessionMessages(sessionId, limit = 50) { return getDb()`select id, role, content, metadata, created_at from messages where session_id = ${sessionId} order by created_at asc limit ${limit}`; }
 export async function listSessions(userId) { return getDb()`select id, title, created_at, updated_at from chat_sessions where user_id=${userId} and archived_at is null order by updated_at desc limit 50`; }
 export async function createSession(userId) { const [session] = await getDb()`insert into chat_sessions (user_id) values (${userId}) returning *`; return session; }
 export async function getSessionForUser(userId, sessionId) { const [session] = await getDb()`select * from chat_sessions where id = ${sessionId} and user_id = ${userId} and archived_at is null`; return session || null; }
 export async function archiveSession(userId, sessionId) { const [session] = await getDb()`update chat_sessions set archived_at = now(), updated_at = now() where id = ${sessionId} and user_id = ${userId} and archived_at is null returning *`; return session || null; }
+export async function renameSession(userId, sessionId, title) {
+  const cleanTitle = String(title || '').trim().replace(/\s+/g, ' ').slice(0, 72);
+  if (!cleanTitle) throw new Error('Chat name is required');
+  const [session] = await getDb()`update chat_sessions set title = ${cleanTitle}, updated_at = now() where id = ${sessionId} and user_id = ${userId} and archived_at is null returning *`;
+  return session || null;
+}

@@ -52,7 +52,7 @@ export async function getUserSites(userId) {
   return getDb()`select * from connected_sites where user_id = ${userId} and status <> 'revoked' order by created_at desc`;
 }
 
-export async function updateSite(userId, siteId, updates) {
+export async function updateSite(userId, googleSub, siteId, updates) {
   const clean = validateSiteUpdate(updates);
   const [site] = await getDb()`select * from connected_sites where id = ${siteId} and user_id = ${userId}`;
   if (!site) throw new Error('Site not found');
@@ -63,10 +63,12 @@ export async function updateSite(userId, siteId, updates) {
   // Limits are enforced by the smart wallet, not merely by this database.
   // Any limit change must invalidate the last policy sync so checkout will
   // submit an owner-authorized TrustList update before it can pay again.
-  const policyChanged = clean.spendingCap !== undefined || clean.perTransactionCap !== undefined;
+  const policyChanged = clean.spendingCap !== undefined || clean.perTransactionCap !== undefined || (clean.status !== undefined && clean.status !== site.status);
+  if (clean.status === 'paused' && site.status !== 'paused') await removeSitePolicy(userId, googleSub, site);
   const [updated] = await getDb()`
     update connected_sites set site_name = coalesce(${clean.siteName ?? null}, site_name), spending_cap = coalesce(${clean.spendingCap ?? null}, spending_cap), per_transaction_cap = coalesce(${clean.perTransactionCap ?? null}, per_transaction_cap), auto_confirm_threshold = coalesce(${clean.autoConfirmThreshold ?? null}, auto_confirm_threshold), status = coalesce(${clean.status ?? null}, status), trust_rule_version = trust_rule_version + case when ${policyChanged} then 1 else 0 end, policy_synced_at = case when ${policyChanged} then null else policy_synced_at end, policy_sync_error = case when ${policyChanged} then null else policy_sync_error end, updated_at = now()
     where id = ${siteId} and user_id = ${userId} returning *`;
+  if (updated.status === 'active' && policyChanged) return (await syncSitePolicy(userId, googleSub, updated.id)).site;
   return updated;
 }
 

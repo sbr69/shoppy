@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 import SettingsPanel from '../settings/SettingsPanel';
+import ConfirmDialog from '../common/ConfirmDialog';
 import {
   Lightning,
   PlusCircle,
@@ -11,7 +12,11 @@ import {
   ChatCircleText,
   ShoppingBag,
   ClockCounterClockwise,
-  ShieldCheck,
+  DotsThree,
+  PencilSimple,
+  Trash,
+  Check,
+  X,
 } from '@phosphor-icons/react';
 
 export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect }) {
@@ -19,12 +24,48 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   const [sessions, setSessions] = useState([]);
+  const [menuId, setMenuId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   useEffect(() => {
     api.get('/chat/sessions').then(({ data }) => setSessions(data.sessions || [])).catch(() => setSessions([]));
   }, [activeSessionId]);
 
   const selectSession = (id) => onSessionSelect?.(id);
+
+  const beginRename = (session) => {
+    setMenuId(null);
+    setEditingId(session.id);
+    setDraftTitle(session.title || 'New shopping chat');
+  };
+
+  const saveRename = async (event) => {
+    event.preventDefault();
+    if (!editingId || !draftTitle.trim()) return;
+    try {
+      const { data } = await api.patch(`/chat/sessions/${editingId}`, { title: draftTitle });
+      setSessions((current) => current.map((session) => session.id === editingId ? data.session : session));
+      setEditingId(null);
+    } catch {
+      // Keep the editor visible so the user can correct and retry the title.
+    }
+  };
+
+  const deleteSession = async () => {
+    const session = pendingDelete;
+    if (!session) return;
+    try {
+      await api.delete(`/chat/sessions/${session.id}`);
+      setSessions((current) => current.filter((item) => item.id !== session.id));
+      setMenuId(null);
+      setPendingDelete(null);
+      if (activeSessionId === session.id) await onNewChat?.();
+    } catch {
+      // The next list refresh restores a session if its deletion did not complete.
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -68,10 +109,6 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
             <ClockCounterClockwise size={17} />
             <span>Wallet activity</span>
           </button>
-          <button className={activeView === 'stores' ? 'active' : ''} onClick={() => onNavigate?.('stores')}>
-            <ShieldCheck size={17} />
-            <span>Stores & safeguards</span>
-          </button>
         </nav>
 
         <div className="sidebar-history">
@@ -87,13 +124,30 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
           </button>
           <div className="sidebar-sessions-list">
             {sessions.slice(0, 8).map((session) => (
-              <button
-                className={`sidebar-session ${activeSessionId === session.id ? 'active' : ''}`}
-                key={session.id}
-                onClick={() => selectSession(session.id)}
-              >
-                {session.title || 'New shopping chat'}
-              </button>
+              <div className={`sidebar-session-row ${activeSessionId === session.id ? 'active' : ''}`} key={session.id}>
+                {editingId === session.id ? (
+                  <form className="sidebar-session-rename" onSubmit={saveRename}>
+                    <input aria-label="Chat name" autoFocus value={draftTitle} maxLength={72} onChange={(event) => setDraftTitle(event.target.value)} />
+                    <button type="submit" aria-label="Save chat name"><Check size={14} /></button>
+                    <button type="button" aria-label="Cancel rename" onClick={() => setEditingId(null)}><X size={14} /></button>
+                  </form>
+                ) : (
+                  <>
+                    <button className="sidebar-session" onClick={() => selectSession(session.id)} title={session.title || 'New shopping chat'}>
+                      {session.title || 'New shopping chat'}
+                    </button>
+                    <button className="sidebar-session-more" onClick={() => setMenuId((current) => current === session.id ? null : session.id)} aria-label={`Options for ${session.title || 'chat'}`} aria-expanded={menuId === session.id}>
+                      <DotsThree size={18} weight="bold" />
+                    </button>
+                    {menuId === session.id && (
+                      <div className="sidebar-session-menu" role="menu">
+                        <button role="menuitem" onClick={() => beginRename(session)}><PencilSimple size={14} /> Rename</button>
+                        <button role="menuitem" className="danger" onClick={() => { setMenuId(null); setPendingDelete(session); }}><Trash size={14} /> Delete</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -115,6 +169,14 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
       <SettingsPanel
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+      />
+      <ConfirmDialog
+        isOpen={Boolean(pendingDelete)}
+        title="Delete this chat?"
+        description="This removes the conversation from your chat history. This action cannot be undone."
+        confirmLabel="Delete chat"
+        onConfirm={deleteSession}
+        onClose={() => setPendingDelete(null)}
       />
     </>
   );

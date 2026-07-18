@@ -3,7 +3,7 @@ import { lookup } from 'dns/promises';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
 import { decrypt, encrypt } from './crypto.service.js';
-import { removeSitePolicy } from './site.service.js';
+import { removeSitePolicy, syncSitePolicy } from './site.service.js';
 
 const OAUTH_TTL_MS = 10 * 60 * 1000;
 const REQUIRED_SCOPES = ['profile', 'checkout:prepare', 'checkout:confirm', 'orders:read'];
@@ -90,6 +90,14 @@ export async function completeStoreOAuth({ code, state, error, errorDescription 
     if (!response.ok) throw new Error(`Token exchange failed (${response.status})`); const token = await response.json(); if (!token.access_token) throw new Error('Token response did not include an access token');
     const expiresAt = new Date(Date.now() + Number(token.expires_in || 900) * 1000).toISOString(); const sealed = encrypt(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token, tokenType: token.token_type || 'Bearer', expiresAt, scope: token.scope || client.scopes.join(' ') }), tokenScope(site.id));
     await db`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${expiresAt}, auth_scope = ${token.scope || client.scopes.join(' ')}, authorized_at = now(), status = 'active', updated_at = now() where id = ${site.id}`;
+    const [user] = await db`select id, google_sub from users where id = ${site.user_id}`;
+    try {
+      await syncSitePolicy(user.id, user.google_sub, site.id);
+    } catch (policyError) {
+      // The connection remains valid. Checkout will retry this automatically
+      // before it can move funds, and the failure is visible on the store.
+      await db`update connected_sites set policy_sync_error = ${policyError.message}, updated_at = now() where id = ${site.id}`;
+    }
     return { redirectUrl: dashboard({ storeConnection: 'success', siteId: site.id }) };
   } catch (err) { await db`update connected_sites set status = 'pending_authorization', policy_sync_error = ${err.message} where id = ${site.id}`; return { redirectUrl: dashboard({ storeConnection: 'failed' }), error: err.message }; }
 }
