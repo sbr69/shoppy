@@ -11,15 +11,19 @@ const Hero = () => {
   return (
     <section className="hero-awwwards">
       <div className="hero-grid">
+        <aside className="hero-index" aria-hidden="true">
+          <span>01</span>
+          <span>AGENT<br />COMMERCE</span>
+        </aside>
         <div className="hero-content">
-          <div className="eyebrow-tag">Autonomous Commerce</div>
+          <div className="eyebrow-tag">Controlled agentic commerce</div>
           <h1>
-            Shop<br />
-            Without<br />
-            Thinking.
+            Ask once.<br />
+            Shop with<br />
+            <em>confidence.</em>
           </h1>
           <p>
-            The world's first AI agent that securely executes purchases across any e-commerce platform using self-custodial Stellar smart contracts.
+            A calm, conversational way to search your connected stores, review every checkout, and pay through your protected Stellar smart wallet.
           </p>
           <div className="hero-actions">
              <button className="btn-pill btn-pill-primary" onClick={() => navigate('/dashboard')}>
@@ -44,25 +48,25 @@ const Hero = () => {
               </div>
               <div className="terminal-body">
                 <div className="terminal-line input-line">
-                  <span className="prompt">$</span> jarvis buy "Keychron Q1" --max-budget 150
+                <span className="prompt">›</span> Find wireless earbuds under 2,000 rupees
                 </div>
                 <div className="terminal-line response-line">
-                  <span className="tag-jarvis">[Jarvis]</span> Resolving product details...
+                  <span className="tag-jarvis">[Agent]</span> Comparing your connected stores...
                 </div>
                 <div className="terminal-line response-line">
-                  <span className="tag-jarvis">[Jarvis]</span> Found at Store: $139.00 USD
+                  <span className="tag-jarvis">[Match]</span> Best fit found · ₹1,899
                 </div>
                 <div className="terminal-line response-line">
-                  <span className="tag-guard">[SpendGuard]</span> Policy verification... <span className="status-ok">Approved</span>
+                  <span className="tag-guard">[Safeguard]</span> Budget check... <span className="status-ok">Approved</span>
                 </div>
                 <div className="terminal-line response-line">
-                  <span className="tag-stellar">[Stellar]</span> Signing transaction...
+                  <span className="tag-stellar">[Stellar]</span> Awaiting your checkout approval...
                 </div>
                 <div className="terminal-line response-line success-text">
-                  <span className="tag-stellar">[Stellar]</span> Tx hash: <span className="hash-val">0x8a92...cf3b</span>
+                  <span className="tag-stellar">[Receipt]</span> Ready when you are
                 </div>
                 <div className="terminal-status-success">
-                  TRANSACTION COMPLETED SECURELY
+                  YOU STAY IN CONTROL
                 </div>
               </div>
             </div>

@@ -25,9 +25,6 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Load chat history on mount
-  useEffect(() => { setInitialLoading(true); setMessages([]); loadHistory(); }, [sessionId]);
-
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     scrollToBottom();
@@ -37,7 +34,7 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     try {
       const { data } = await api.get('/chat/history', { params: sessionId ? { sessionId } : {} });
       if (data.sessionId && data.sessionId !== sessionId) onSessionReady?.(data.sessionId);
@@ -58,7 +55,13 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
     } finally {
       setInitialLoading(false);
     }
-  };
+  }, [sessionId, onSessionReady]);
+
+  useEffect(() => {
+    setInitialLoading(true);
+    setMessages([]);
+    void loadHistory();
+  }, [loadHistory]);
 
   const sendMessage = useCallback(async (messageText) => {
     const text = messageText || input.trim();
@@ -230,14 +233,14 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
       <div className="chat-container">
         <div className="chat-header">
           <div className="chat-header-title">
-            <button className="chat-mobile-toggle" onClick={onToggleSidebar}>
+            <button className="chat-mobile-toggle" onClick={onToggleSidebar} aria-label="Open navigation">
               <List size={20} />
             </button>
             <Lightning size={18} weight="fill" color="var(--color-accent)" />
             <h2>JarvisPayz Agent</h2>
           </div>
         </div>
-        <div className="chat-messages" style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <div className="chat-messages" style={{ alignItems: 'center', justifyContent: 'center' }} aria-live="polite" aria-label="Shopping conversation">
           <div className="spinner-lg" />
         </div>
       </div>
@@ -249,7 +252,7 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-title">
-          <button className="chat-mobile-toggle" onClick={onToggleSidebar}>
+          <button className="chat-mobile-toggle" onClick={onToggleSidebar} aria-label="Open navigation">
             <List size={20} />
           </button>
           <Lightning size={20} weight="fill" color="var(--color-accent)" />
@@ -263,6 +266,8 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
             className={`chat-telemetry-toggle ${telemetryOpen ? 'active' : ''}`}
             onClick={onToggleTelemetry}
             title="Toggle Status & Safeguards Dashboard"
+            aria-label="Toggle wallet and safeguards panel"
+            aria-pressed={telemetryOpen}
           >
             <Sliders size={18} weight="bold" />
           </button>
@@ -270,7 +275,7 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
       </div>
 
       {/* Messages */}
-      <div className="chat-messages">
+      <div className="chat-messages" aria-live="polite" aria-label="Shopping conversation">
         {messages.length === 0 ? (
           <div className="chat-messages-empty">
             <div className="chat-empty-icon">
@@ -313,12 +318,14 @@ export default function ChatWindow({ onToggleSidebar, onToggleTelemetry, telemet
             onKeyDown={handleKeyDown}
             rows={1}
             id="chat-input"
+            aria-label="Tell the agent what you want to buy"
           />
           <button
             className="chat-send-btn"
             onClick={() => sendMessage()}
             disabled={!input.trim() || loading}
             id="chat-send-btn"
+            aria-label="Send message"
           >
             <PaperPlaneRight size={16} weight="fill" />
           </button>

@@ -14,7 +14,7 @@ import {
   ShieldCheck,
 } from '@phosphor-icons/react';
 
-export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect, onConnectStore, storeRefreshKey }) {
+export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
@@ -48,7 +48,7 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
             </div>
             <span>JarvisPayz</span>
           </div>
-          <button className="sidebar-user-btn" title={user?.email}>
+          <button className="sidebar-user-btn" title={user?.email} aria-label="Current account">
             {user?.avatarUrl && (
               <img src={user.avatarUrl} alt={user.name} referrerPolicy="no-referrer" />
             )}
@@ -77,7 +77,7 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
         <div className="sidebar-history">
           <div className="sidebar-history-head">
             <span>Chat history</span>
-            <button onClick={onNewChat} title="New chat">
+            <button onClick={onNewChat} title="New chat" aria-label="Start a new chat">
               <PlusCircle size={16} />
             </button>
           </div>

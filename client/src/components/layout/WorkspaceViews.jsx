@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowSquareOut,
-  CheckCircle,
   Clock,
   Package,
   ShieldCheck,
@@ -93,7 +92,7 @@ export function OrdersView() {
                   {/* Product */}
                   <div className="order-row-product">
                     {order.product_image ? (
-                      <img src={order.product_image} alt="" className="order-thumbnail" />
+                      <img src={order.product_image} alt="" className="order-thumbnail" loading="lazy" />
                     ) : (
                       <div className="order-thumbnail-placeholder">
                         <Package size={18} />

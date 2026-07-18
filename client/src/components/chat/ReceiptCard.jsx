@@ -16,7 +16,7 @@ export default function ReceiptCard({ product, purchase }) {
       <div className="receipt-card-product">
         <div className="receipt-card-product-image">
           {product.image ? (
-            <img src={product.image} alt={product.name} />
+            <img src={product.image} alt={product.name} loading="lazy" />
           ) : (
             <ShoppingBag size={20} weight="duotone" />
           )}

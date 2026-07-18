@@ -19,7 +19,7 @@ const Navbar = () => {
 
   return (
     <div className="island-nav-wrapper">
-      <nav className={`island-nav ${scrolled ? 'scrolled' : ''}`}>
+      <nav className={`island-nav ${scrolled ? 'scrolled' : ''}`} aria-label="Primary navigation">
         <a href="/" className="island-logo">
           <Wallet weight="light" size={24} color="var(--color-accent)" />
           JarvisPayz
@@ -27,8 +27,8 @@ const Navbar = () => {
         
         <div className="island-links">
           <a href="#features" className="island-link">Platform</a>
-          <a href="#how-it-works" className="island-link">Methodology</a>
-          <a href="#security" className="island-link">Security</a>
+          <a href="#how-it-works" className="island-link">How it works</a>
+          <a href="#security" className="island-link">Safeguards</a>
         </div>
 
         <div className="island-actions">

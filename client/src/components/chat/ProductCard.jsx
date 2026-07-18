@@ -5,7 +5,7 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip, his
     <div className="product-card">
       <div className="product-card-image">
         {product.image ? (
-          <img src={product.image} alt={product.name} />
+          <img src={product.image} alt={product.name} loading="lazy" />
         ) : (
           <ShoppingBag size={48} weight="duotone" />
         )}

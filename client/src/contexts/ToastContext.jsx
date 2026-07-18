@@ -1,3 +1,4 @@
+// oxlint-disable react/only-export-components -- provider and consumer hook are an intentional context pair.
 import { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 
 const ToastContext = createContext(null);
