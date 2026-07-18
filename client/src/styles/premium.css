@@ -599,3 +599,49 @@ button:disabled, [aria-disabled='true'] { cursor: not-allowed; opacity: 0.56; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }
+
+/* Polished Login Modal Styles */
+.login-modal-card {
+  max-width: 420px;
+  width: min(100%, 420px);
+  padding: 2.25rem 2rem;
+  text-align: center;
+  position: relative;
+}
+.login-modal-card .navbar-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1.25rem;
+}
+.login-modal-card .login-modal-header h2 {
+  font-family: var(--font-sans);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+.login-modal-card .login-modal-header p {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  margin: 0;
+}
+.login-modal-card .login-modal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.75rem 0;
+}
+.login-modal-card .login-modal-footer {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 1.25rem;
+}
+.login-modal-card .login-modal-footer p {
+  font-size: 0.82rem;
+  color: var(--ink-soft); /* Higher contrast */
+  line-height: 1.5;
+  margin: 0;
+}

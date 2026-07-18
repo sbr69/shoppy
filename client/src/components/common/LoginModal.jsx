@@ -43,29 +43,28 @@ export default function LoginModal({ isOpen, onClose }) {
         role="dialog" 
         aria-modal="true" 
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '400px', width: '90%', padding: '2rem', textAlign: 'center' }}
       >
         <button 
           className="modal-close" 
           onClick={onClose} 
           aria-label="Close login dialog"
-          style={{ position: 'absolute', top: '1rem', right: '1rem' }}
+          style={{ position: 'absolute', top: '1.25rem', right: '1.25rem' }}
         >
           <X size={16} />
         </button>
 
-        <div className="login-card-header" style={{ marginBottom: '1.75rem' }}>
-          <div className="navbar-logo" style={{ justifyContent: 'center', gap: '10px', marginBottom: '1.25rem' }}>
+        <div className="login-modal-header">
+          <div className="navbar-logo">
             <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 44, height: 44, display: 'block' }} />
             <span style={{ fontSize: '1.6rem', fontWeight: 700 }}>JarvisPayz</span>
           </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: 'var(--ink)', marginBottom: '0.5rem' }}>Welcome Back</h2>
-          <p style={{ fontSize: '0.88rem', color: 'var(--ink-soft)', lineHeight: 1.5, margin: 0 }}>
+          <h2>Welcome Back</h2>
+          <p>
             Sign in with Google to access your AI shopping agent and managed Stellar wallet.
           </p>
         </div>
 
-        <div className="login-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', marginBottom: '1.75rem' }}>
+        <div className="login-modal-body">
           <GoogleLogin
             onSuccess={async (credentialResponse) => {
               try {
@@ -90,8 +89,8 @@ export default function LoginModal({ isOpen, onClose }) {
           {loginError && <p className="login-error" role="alert" style={{ color: '#813f3c', fontSize: '0.84rem', margin: 0 }}>{loginError}</p>}
         </div>
 
-        <div className="login-card-footer" style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1.25rem' }}>
-          <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', lineHeight: 1.45, margin: 0 }}>
+        <div className="login-modal-footer">
+          <p>
             Your Stellar wallet is created and connected automatically.
             <br />
             No extensions or seed phrases needed.
