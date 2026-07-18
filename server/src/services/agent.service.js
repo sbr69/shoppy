@@ -80,6 +80,26 @@ async function findIntent(userId, sessionId, requestedId) {
   return intent;
 }
 
+export function paymentFailureDetail(error) {
+  const detail = String(error?.message || 'Payment could not be completed.');
+  // Both the direct smart wallet and SpendGuard use contract error #8 for a
+  // daily-limit rejection. The transaction is atomic, so this path means no
+  // XLM left the wallet.
+  if (/Error\(Contract, #8\)/.test(detail)) {
+    return 'This purchase exceeds the remaining daily XLM allowance for this store. No funds were transferred.';
+  }
+  if (/Error\(Contract, #7\)/.test(detail)) {
+    return 'This purchase exceeds this store’s per-transaction XLM limit. No funds were transferred.';
+  }
+  if (/Error\(Contract, #5\)/.test(detail)) {
+    return 'The agent wallet does not have enough XLM for this purchase. No funds were transferred.';
+  }
+  if (/Error\(Contract, #9\)/.test(detail)) {
+    return 'This exact purchase approval was already used. No additional payment was sent.';
+  }
+  return detail;
+}
+
 async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   const db = getDb();
   const purchaseIntent = await findIntent(userId, sessionId, requestedId);
@@ -126,9 +146,10 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
     await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'payment', status: result.success ? 'completed' : 'pending', detail: result.success ? 'Stellar payment finalized.' : 'Stellar payment submitted; reconciliation pending.', metadata: { txHash: result.txHash } });
     return { type: result.success ? 'purchase_success' : 'purchase_pending', content: result.success ? 'Payment submitted and finalized on Stellar.' : 'Payment submitted; final confirmation is pending.', metadata: { product, purchase: result } };
   } catch (error) {
+    const detail = paymentFailureDetail(error);
     await markIntentState(purchaseIntent.id, 'failed', { reserved_xlm: 0 });
-    await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'payment', status: 'failed', detail: error.message });
-    return { type: 'purchase_failed', content: `Payment was not completed: ${error.message}`, metadata: { product, error: error.message } };
+    await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'payment', status: 'failed', detail });
+    return { type: 'purchase_failed', content: `Payment was not completed: ${detail}`, metadata: { product, error: detail } };
   }
 }
 

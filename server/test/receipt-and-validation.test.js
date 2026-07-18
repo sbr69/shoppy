@@ -4,6 +4,7 @@ import { buildReceiptMemo, verifyReceiptMemo } from '../src/services/receipt.ser
 import { parseFiniteNonNegative, validateChatMessage, validateSiteUpdate } from '../src/services/validation.service.js';
 import { xlmToStroops } from '../src/services/soroban.service.js';
 import { normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
+import { paymentFailureDetail } from '../src/services/agent.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -48,4 +49,10 @@ test('semantic decisions fail closed without a pending purchase', () => {
     action: 'search', product: 'wireless earbuds', quantity: 1, searchQueries: ['Bluetooth earphones'],
   }).action, 'search');
   assert.deepEqual(retrievalQueries({ product: 'wireless earbuds', searchQueries: ['Bluetooth earphones', 'wireless earbuds'] }), ['wireless earbuds', 'Bluetooth earphones']);
+});
+
+test('Soroban policy errors are presented as safe payment outcomes', () => {
+  assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #8)')), /daily XLM allowance/i);
+  assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #7)')), /per-transaction XLM limit/i);
+  assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #5)')), /does not have enough XLM/i);
 });

@@ -60,8 +60,12 @@ export async function updateSite(userId, siteId, updates) {
   if (clean.spendingCap !== undefined && Number(clean.spendingCap) < Number(clean.perTransactionCap ?? site.per_transaction_cap)) throw new Error('spendingCap cannot be lower than perTransactionCap');
   if (clean.perTransactionCap !== undefined && Number(clean.perTransactionCap) > Number(clean.spendingCap ?? site.spending_cap)) throw new Error('perTransactionCap cannot exceed spendingCap');
   if (Object.keys(clean).length === 0) return site;
+  // Limits are enforced by the smart wallet, not merely by this database.
+  // Any limit change must invalidate the last policy sync so checkout will
+  // submit an owner-authorized TrustList update before it can pay again.
+  const policyChanged = clean.spendingCap !== undefined || clean.perTransactionCap !== undefined;
   const [updated] = await getDb()`
-    update connected_sites set site_name = coalesce(${clean.siteName ?? null}, site_name), spending_cap = coalesce(${clean.spendingCap ?? null}, spending_cap), per_transaction_cap = coalesce(${clean.perTransactionCap ?? null}, per_transaction_cap), auto_confirm_threshold = coalesce(${clean.autoConfirmThreshold ?? null}, auto_confirm_threshold), status = coalesce(${clean.status ?? null}, status), trust_rule_version = trust_rule_version + 1, updated_at = now()
+    update connected_sites set site_name = coalesce(${clean.siteName ?? null}, site_name), spending_cap = coalesce(${clean.spendingCap ?? null}, spending_cap), per_transaction_cap = coalesce(${clean.perTransactionCap ?? null}, per_transaction_cap), auto_confirm_threshold = coalesce(${clean.autoConfirmThreshold ?? null}, auto_confirm_threshold), status = coalesce(${clean.status ?? null}, status), trust_rule_version = trust_rule_version + case when ${policyChanged} then 1 else 0 end, policy_synced_at = case when ${policyChanged} then null else policy_synced_at end, policy_sync_error = case when ${policyChanged} then null else policy_sync_error end, updated_at = now()
     where id = ${siteId} and user_id = ${userId} returning *`;
   return updated;
 }
