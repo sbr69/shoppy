@@ -7,7 +7,8 @@ const IV_LENGTH = 16;  // 128 bits
 
 /**
  * Derive a scoped backend key from the master secret. This must only be used
- * for backend-owned, constrained agent signers; never for an owner wallet.
+ * for server-custodial key material. Distinct scopes isolate owner and agent
+ * keys so ciphertext cannot be replayed across their roles.
  */
 function deriveKey(googleSub) {
   return createHmac('sha256', config.masterSecret)

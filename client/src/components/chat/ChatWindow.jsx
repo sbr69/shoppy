@@ -15,7 +15,7 @@ const SUGGESTIONS = [
   'Show me mechanical keyboards',
 ];
 
-export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady }) {
+export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady, onWalletChanged }) {
   const { user } = useAuth();
   const toast = useToast();
   const [messages, setMessages] = useState([]);
@@ -93,11 +93,17 @@ export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady 
 
       if (response.type === 'purchase_success') {
         toast.success('Purchase confirmed on Stellar!');
+        onWalletChanged?.();
       } else if (response.type === 'purchase_failed') {
         toast.error('Payment failed: ' + (response.metadata?.error || 'Unknown error'));
+      } else if (response.type === 'purchase_pending') {
+        onWalletChanged?.();
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Something went wrong. Please try again.';
+      const retryAfter = Number.parseInt(err.response?.headers?.['retry-after'] || err.response?.data?.retryAfterSeconds, 10);
+      const errorMsg = err.response?.status === 429 && Number.isFinite(retryAfter)
+        ? `You have sent messages quickly. Please try again in ${retryAfter} second${retryAfter === 1 ? '' : 's'}.`
+        : (err.response?.data?.error || 'Something went wrong. Please try again.');
       setMessages(prev => [...prev, {
         id: `error-${Date.now()}`,
         role: 'agent',
@@ -109,7 +115,7 @@ export default function ChatWindow({ onToggleSidebar, sessionId, onSessionReady 
       setLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, loading, toast, sessionId, onSessionReady]);
+  }, [input, loading, toast, sessionId, onSessionReady, onWalletChanged]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

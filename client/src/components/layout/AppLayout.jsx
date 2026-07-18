@@ -11,6 +11,7 @@ export default function AppLayout() {
   const [sessionId, setSessionId] = useState(null);
   const [connectStoreOpen, setConnectStoreOpen] = useState(false);
   const [storeRefreshKey, setStoreRefreshKey] = useState(0);
+  const [walletRefreshKey, setWalletRefreshKey] = useState(0);
 
   const startNewChat = async () => {
     setView('chat');
@@ -36,11 +37,13 @@ export default function AppLayout() {
         onSessionSelect={(id) => { setSessionId(id); setView('chat'); setSidebarOpen(false); }}
         onConnectStore={() => { setConnectStoreOpen(true); setSidebarOpen(false); }}
         storeRefreshKey={storeRefreshKey}
+        walletRefreshKey={walletRefreshKey}
       />
       {view === 'chat' && <ChatWindow
         sessionId={sessionId}
         onSessionReady={setSessionId}
         onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+        onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
       />}
       {view === 'orders' && <OrdersView />}
       {view === 'wallet' && <WalletActivityView />}

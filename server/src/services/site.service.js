@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import getDb from '../db/database.js';
 import config from '../config/env.js';
 import { parseFiniteNonNegative, validateSiteUpdate } from './validation.service.js';
-import { getAgentWalletByUserId, getOwnerKeypairForSigning, getWalletByUserId } from './wallet.service.js';
+import { getOwnerKeypairForSigning, getWalletByUserId } from './wallet.service.js';
 import { submitCustodialOwnerAction } from './soroban.service.js';
 
 const domainHash = (origin) => createHash('sha256').update(new URL(origin).hostname.toLowerCase()).digest('hex');
@@ -48,7 +48,9 @@ export async function getOrCreateOAuthSite(userId, { siteUrl, spendingCap = 1000
   return { site, store };
 }
 
-export async function getUserSites(userId) { return getDb()`select * from connected_sites where user_id = ${userId} order by created_at desc`; }
+export async function getUserSites(userId) {
+  return getDb()`select * from connected_sites where user_id = ${userId} and status <> 'revoked' order by created_at desc`;
+}
 
 export async function updateSite(userId, siteId, updates) {
   const clean = validateSiteUpdate(updates);
@@ -70,23 +72,42 @@ export async function removeSite(userId, siteId) {
   return { success: true };
 }
 
-/** Synchronize a registered merchant's SpendGuard and TrustList policy. */
+/** Synchronize a registered merchant's TrustList policy for its smart wallet. */
 export async function syncSitePolicy(userId, googleSub, siteId) {
   const db = getDb();
   const [site] = await db`select * from connected_sites where id = ${siteId} and user_id = ${userId}`;
   if (!site) throw new Error('Site not found');
-  const [wallet, agent, ownerKeypair] = await Promise.all([
-    getWalletByUserId(userId), getAgentWalletByUserId(userId), getOwnerKeypairForSigning(userId, googleSub),
+  const [wallet, ownerKeypair] = await Promise.all([
+    getWalletByUserId(userId), getOwnerKeypairForSigning(userId, googleSub),
   ]);
-  if (!wallet?.public_key || !agent?.public_key) throw new Error('Custodial wallet or constrained signer is unavailable');
+  if (!wallet?.public_key) throw new Error('Custodial funding account is unavailable');
   try {
-    const agentResult = await submitCustodialOwnerAction({ actionType: 'set_agent', ownerKeypair, ownerPublicKey: wallet.public_key, agentPublicKey: agent.public_key });
     const ruleResult = await submitCustodialOwnerAction({ actionType: 'set_trust_rule', ownerKeypair, ownerPublicKey: wallet.public_key, site });
     const [updated] = await db`update connected_sites set policy_synced_at = now(), policy_sync_error = null, updated_at = now() where id = ${site.id} returning *`;
-    await db`insert into audit_events (user_id, event_type, payload) values (${userId}, 'site_policy_synced', ${db.json({ siteId: site.id, setAgentTx: agentResult.txHash, setRuleTx: ruleResult.txHash })})`;
-    return { site: updated, transactions: { setAgent: agentResult.txHash, setRule: ruleResult.txHash } };
+    await db`insert into audit_events (user_id, event_type, payload) values (${userId}, 'site_policy_synced', ${db.json({ siteId: site.id, setRuleTx: ruleResult.txHash })})`;
+    return { site: updated, transactions: { setRule: ruleResult.txHash } };
   } catch (error) {
     await db`update connected_sites set policy_sync_error = ${error.message}, updated_at = now() where id = ${site.id}`;
     throw error;
   }
+}
+
+/** Remove a previously synchronized merchant rule when a user disconnects it. */
+export async function removeSitePolicy(userId, googleSub, site) {
+  if (!site.policy_synced_at) return null;
+  const db = getDb();
+  const [wallet, ownerKeypair] = await Promise.all([
+    getWalletByUserId(userId),
+    getOwnerKeypairForSigning(userId, googleSub),
+  ]);
+  if (!wallet?.public_key) throw new Error('Custodial wallet is unavailable');
+
+  const result = await submitCustodialOwnerAction({
+    actionType: 'remove_trust_rule',
+    ownerKeypair,
+    ownerPublicKey: wallet.public_key,
+    site,
+  });
+  await db`insert into audit_events (user_id, event_type, payload) values (${userId}, 'site_policy_removed', ${db.json({ siteId: site.id, removeRuleTx: result.txHash })})`;
+  return result;
 }

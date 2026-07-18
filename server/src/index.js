@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import config from './config/env.js';
 import { verifyDatabaseConnection } from './db/database.js';
-import { generalLimiter, authLimiter, chatLimiter } from './middleware/rateLimiter.js';
+import { generalLimiter, authLimiter } from './middleware/rateLimiter.js';
 import authRoutes from './routes/auth.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import chatRoutes from './routes/chat.routes.js';
@@ -52,7 +52,7 @@ app.use('/api', generalLimiter);
 // ─── Routes (with per-route rate limiting) ───
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/wallet', walletRoutes);
-app.use('/api/chat', chatLimiter, chatRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/api/sites', sitesRoutes);
 app.use('/api/purchases', purchasesRoutes);
 app.use('/api/profile', profileRoutes);

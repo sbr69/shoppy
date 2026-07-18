@@ -4,9 +4,9 @@ import getDb from '../db/database.js';
 import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
 import { buildReceiptMemo } from './receipt.service.js';
 import { markIntentState } from './policy.service.js';
-import { prepareGuardedSpend, submitGuardedSpend, submitCustodialGuardedSpend, getSorobanTransactionStatus } from './soroban.service.js';
+import { prepareGuardedSpend, submitGuardedSpend, submitAgentSmartWalletSpend, getSorobanTransactionStatus } from './soroban.service.js';
 import { recordWorkflowEvent } from './workflow.service.js';
-import { getAgentKeypairForSigning, getAgentWalletByUserId, getOwnerKeypairForSigning, getWalletByUserId } from './wallet.service.js';
+import { getAgentKeypairForSigning, getAgentSmartWalletByUserId, getAgentWalletByUserId, getOwnerKeypairForSigning, getWalletByUserId } from './wallet.service.js';
 
 function receiptFor(purchaseIntent, site, product) {
   return {
@@ -176,17 +176,68 @@ export async function getPurchaseHistory(userId) {
 export async function executeCustodialPayment(userId, googleSub, purchaseIntent, site, product) {
   const amount = Number(purchaseIntent.price_xlm);
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid verified payment amount');
-  const [wallet, ownerKeypair, agentKeypair] = await Promise.all([
-    getWalletByUserId(userId), getOwnerKeypairForSigning(userId, googleSub), getAgentKeypairForSigning(userId, googleSub),
+  const [smartWallet, ownerWallet, ownerKeypair, agentKeypair] = await Promise.all([
+    getAgentSmartWalletByUserId(userId),
+    getWalletByUserId(userId),
+    getOwnerKeypairForSigning(userId, googleSub),
+    getAgentKeypairForSigning(userId, googleSub),
   ]);
-  if (!wallet?.public_key || wallet.status !== 'active') throw new Error('Custodial wallet is unavailable');
+  if (!smartWallet?.contract_id || smartWallet.status !== 'active') throw new Error('Agent Smart Wallet is not ready. Fund your wallet before approving a purchase.');
+  if (!ownerWallet?.public_key || ownerWallet.status !== 'active') throw new Error('Custodial owner authorization is unavailable');
   const receiptData = receiptFor(purchaseIntent, site, product);
   const receiptHash = buildReceiptMemo(receiptData);
-  const submitted = await submitCustodialGuardedSpend({ ownerKeypair, ownerPublicKey: wallet.public_key, agentKeypair, merchant: site.merchant_stellar_address, domainHashHex: site.merchant_domain_hash, amountXlm: amount, intentHashHex: createHash('sha256').update(purchaseIntent.id).digest('hex'), receiptHash });
+  const submitted = await submitAgentSmartWalletSpend({
+    smartWalletId: smartWallet.contract_id,
+    ownerKeypair,
+    ownerPublicKey: ownerWallet.public_key,
+    agentKeypair,
+    merchant: site.merchant_stellar_address,
+    domainHashHex: site.merchant_domain_hash,
+    amountXlm: amount,
+    intentHashHex: createHash('sha256').update(purchaseIntent.id).digest('hex'),
+    receiptHash,
+  });
   const [purchase] = await getDb()`insert into purchases (user_id, site_id, purchase_intent_id, product_name, product_url, product_image, price_xlm, stellar_tx_hash, receipt_memo_hash, status) values (${userId}, ${site.id}, ${purchaseIntent.id}, ${product.name}, ${product.url || null}, ${product.image || null}, ${amount}, ${submitted.txHash}, ${receiptHash.toString('hex')}, ${submitted.final ? 'payment_confirmed' : 'pending'}) on conflict (purchase_intent_id) do update set stellar_tx_hash = excluded.stellar_tx_hash returning *`;
   await markIntentState(purchaseIntent.id, submitted.final ? 'payment_confirmed' : 'payment_submitted', { policy_tx_hash: submitted.txHash });
   await getDb()`insert into audit_events (user_id, purchase_intent_id, event_type, payload) values (${userId}, ${purchaseIntent.id}, 'custodial_payment_submitted', ${getDb().json({ txHash: submitted.txHash, amountXlm: amount })})`;
-  return { success: submitted.final, purchaseId: purchase.id, txHash: submitted.txHash, priceXlm: amount, receiptData, memoHash: receiptHash.toString('hex') };
+
+  // A Stellar success is not yet a merchant order. The merchant creates the
+  // order only after it verifies this exact transaction hash. If its callback
+  // is temporarily unavailable, keep the payment safely retryable; never send
+  // a second on-chain payment merely to obtain an order record.
+  let merchantConfirmed = false;
+  let orderId = purchaseIntent.merchant_order_id;
+  if (submitted.final) {
+    try {
+      const confirmation = await new EcommerceAdapter(site).confirmPayment(orderId, submitted.txHash, purchaseIntent.idempotency_key);
+      orderId = confirmation.orderId || orderId;
+      merchantConfirmed = true;
+      await getDb()`update purchases set status = 'confirmed', confirmed_at = now() where id = ${purchase.id}`;
+      await markIntentState(purchaseIntent.id, 'order_confirmed', { reserved_xlm: 0 });
+    } catch (error) {
+      await recordWorkflowEvent({
+        userId,
+        sessionId: purchaseIntent.session_id,
+        purchaseIntentId: purchaseIntent.id,
+        stage: 'reconciliation',
+        status: 'pending',
+        detail: `Merchant confirmation pending: ${error.message}`,
+        metadata: { txHash: submitted.txHash },
+      });
+    }
+  }
+
+  return {
+    success: merchantConfirmed,
+    pendingMerchantConfirmation: submitted.final && !merchantConfirmed,
+    purchaseId: purchase.id,
+    txHash: submitted.txHash,
+    walletAddress: smartWallet.contract_id,
+    priceXlm: amount,
+    orderId,
+    receiptData,
+    memoHash: receiptHash.toString('hex'),
+  };
 }
 
 /**
@@ -195,7 +246,7 @@ export async function executeCustodialPayment(userId, googleSub, purchaseIntent,
  */
 export async function reconcilePendingPurchases(limit = 25) {
   const db = getDb();
-  const purchases = await db`select p.*, cs.site_url, cs.site_name, cs.adapter_id, cs.auth_token_ciphertext, cs.merchant_stellar_address, cs.merchant_domain_hash, cs.status as site_status, pi.session_id, pi.idempotency_key, pi.merchant_order_id from purchases p join connected_sites cs on cs.id = p.site_id join purchase_intents pi on pi.id = p.purchase_intent_id where p.status in ('pending', 'payment_confirmed') and p.stellar_tx_hash is not null order by p.created_at asc limit ${limit}`;
+  const purchases = await db`select p.*, cs.site_url, cs.site_name, cs.adapter_id, cs.agent_manifest, cs.auth_token_ciphertext, cs.auth_token_iv, cs.auth_token_tag, cs.oauth_client_ciphertext, cs.oauth_client_iv, cs.oauth_client_tag, cs.oauth_server_metadata, cs.merchant_stellar_address, cs.merchant_domain_hash, cs.status as site_status, pi.session_id, pi.idempotency_key, pi.merchant_order_id from purchases p join connected_sites cs on cs.id = p.site_id join purchase_intents pi on pi.id = p.purchase_intent_id where p.status in ('pending', 'payment_confirmed') and p.stellar_tx_hash is not null order by p.created_at asc limit ${limit}`;
   let reconciled = 0;
   for (const purchase of purchases) {
     try {
@@ -208,7 +259,11 @@ export async function reconcilePendingPurchases(limit = 25) {
         continue;
       }
       if (finality !== 'SUCCESS') continue;
-      const confirmation = await new EcommerceAdapter(purchase).confirmPayment(purchase.merchant_order_id, purchase.stellar_tx_hash, purchase.idempotency_key);
+      // The purchase row and connected-site row have different primary keys.
+      // Build the adapter input with the connected-site id, credentials, and
+      // manifest rather than accidentally using the purchase id.
+      const site = { ...purchase, id: purchase.site_id, status: purchase.site_status };
+      const confirmation = await new EcommerceAdapter(site).confirmPayment(purchase.merchant_order_id, purchase.stellar_tx_hash, purchase.idempotency_key);
       await db`update purchases set status = 'confirmed', confirmed_at = now() where id = ${purchase.id}`;
       await markIntentState(purchase.purchase_intent_id, 'order_confirmed', { reserved_xlm: 0 });
       await recordWorkflowEvent({ userId: purchase.user_id, sessionId: purchase.session_id, purchaseIntentId: purchase.purchase_intent_id, stage: 'reconciliation', status: 'completed', detail: `Merchant order ${confirmation.orderId || purchase.merchant_order_id} confirmed.`, metadata: { txHash: purchase.stellar_tx_hash } });

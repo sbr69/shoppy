@@ -10,6 +10,12 @@ function requireContracts() {
   }
 }
 
+function requireAgentWalletContracts() {
+  if (!config.agentWalletWasmHash || !config.trustListContractId || !config.settlementTokenContractId) {
+    throw new Error('Agent Smart Wallet contracts are not configured');
+  }
+}
+
 function rpc() {
   return new StellarSdk.rpc.Server(config.sorobanRpcUrl);
 }
@@ -30,22 +36,146 @@ export function xlmToStroops(amount) {
   return BigInt(whole) * 10_000_000n + BigInt(`${fraction}0000000`.slice(0, 7));
 }
 
-async function prepareInvocation({ sourcePublicKey, contractId, method, args, memoHash, timeoutSeconds = OWNER_ACTION_TIMEOUT_SECONDS }) {
+async function prepareInvocation({ sourcePublicKey, contractId, method, args, timeoutSeconds = OWNER_ACTION_TIMEOUT_SECONDS }) {
   const server = rpc();
   const account = await server.getAccount(sourcePublicKey);
   const builder = new StellarSdk.TransactionBuilder(account, {
     fee: StellarSdk.BASE_FEE,
     networkPassphrase: config.stellarNetworkPassphrase,
   }).addOperation(new StellarSdk.Contract(contractId).call(method, ...args));
-  if (memoHash) builder.addMemo(StellarSdk.Memo.hash(memoHash));
   const unsigned = builder.setTimeout(timeoutSeconds).build();
   return server.prepareTransaction(unsigned);
 }
 
 async function awaitSubmittedTransaction(server, sent) {
   const result = await server.pollTransaction(sent.hash, { attempts: 8 });
-  if (result?.status === 'FAILED') throw new Error('Soroban transaction failed during finalization');
+  if (result?.status === 'FAILED') {
+    const diagnostic = result?.diagnosticEvents?.map((event) => event.toXDR('base64')).join(',') || result?.errorResultXdr || 'no diagnostic details returned';
+    throw new Error(`Soroban transaction failed during finalization: ${diagnostic}`);
+  }
   return { final: result?.status === 'SUCCESS', finalStatus: result?.status || 'NOT_FOUND' };
+}
+
+function contractSigner(keypair) {
+  return StellarSdk.contract.basicNodeSigner(keypair, config.stellarNetworkPassphrase);
+}
+
+/** Deploy and initialize one immutable C... Agent Smart Wallet for a user. */
+export async function deployAgentSmartWallet({ ownerKeypair, ownerPublicKey, agentPublicKey }) {
+  requireAgentWalletContracts();
+  const deployment = await StellarSdk.contract.Client.deploy(
+    {
+      owner: ownerPublicKey,
+      agent: agentPublicKey,
+      token: config.settlementTokenContractId,
+      trust_list: config.trustListContractId,
+    },
+    {
+      wasmHash: config.agentWalletWasmHash,
+      format: 'hex',
+      publicKey: ownerPublicKey,
+      rpcUrl: config.sorobanRpcUrl,
+      networkPassphrase: config.stellarNetworkPassphrase,
+      timeoutInSeconds: OWNER_ACTION_TIMEOUT_SECONDS,
+      ...contractSigner(ownerKeypair),
+    },
+  );
+  const sent = await deployment.signAndSend();
+  const client = sent.result;
+  return {
+    contractId: client.options.contractId,
+    txHash: sent.sendTransactionResponse.hash,
+    final: sent.getTransactionResponse?.status === 'SUCCESS',
+    finalStatus: sent.getTransactionResponse?.status || 'NOT_FOUND',
+  };
+}
+
+async function submitAgentWalletInvocation({ sourceKeypair, sourcePublicKey, contractId, method, args }) {
+  const prepared = await prepareInvocation({ sourcePublicKey, contractId, method, args });
+  const transaction = new StellarSdk.Transaction(prepared.toXDR(), config.stellarNetworkPassphrase);
+  transaction.sign(sourceKeypair);
+  const server = rpc();
+  const sent = await server.sendTransaction(transaction);
+  if (sent.status !== 'PENDING' && sent.status !== 'DUPLICATE') {
+    throw new Error(`Agent Smart Wallet action was not accepted: ${sent.status}`);
+  }
+  return { txHash: sent.hash, rpcStatus: sent.status, ...(await awaitSubmittedTransaction(server, sent)) };
+}
+
+/** Fund the smart-wallet balance once from the custodial funding account. */
+export async function fundAgentSmartWallet({ smartWalletId, ownerKeypair, ownerPublicKey, amountXlm }) {
+  requireAgentWalletContracts();
+  return submitAgentWalletInvocation({
+    sourceKeypair: ownerKeypair,
+    sourcePublicKey: ownerPublicKey,
+    contractId: smartWalletId,
+    method: 'fund',
+    args: [contractArgAddress(ownerPublicKey), StellarSdk.nativeToScVal(xlmToStroops(amountXlm), { type: 'i128' })],
+  });
+}
+
+/** Recover or migrate unused funds from a smart wallet under owner authorization. */
+export async function withdrawAgentSmartWallet({ smartWalletId, ownerKeypair, ownerPublicKey, recipient, amountXlm }) {
+  requireAgentWalletContracts();
+  return submitAgentWalletInvocation({
+    sourceKeypair: ownerKeypair,
+    sourcePublicKey: ownerPublicKey,
+    contractId: smartWalletId,
+    method: 'withdraw',
+    args: [
+      contractArgAddress(ownerPublicKey),
+      contractArgAddress(recipient),
+      StellarSdk.nativeToScVal(xlmToStroops(amountXlm), { type: 'i128' }),
+    ],
+  });
+}
+
+/** Spend directly from the C... smart-wallet balance after its policy check. */
+export async function submitAgentSmartWalletSpend({ smartWalletId, ownerKeypair, ownerPublicKey, agentKeypair, merchant, domainHashHex, amountXlm, intentHashHex, receiptHash }) {
+  requireAgentWalletContracts();
+  const server = rpc();
+  const latestLedger = await server.getLatestLedger();
+  const prepared = await prepareInvocation({
+    sourcePublicKey: agentKeypair.publicKey(),
+    contractId: smartWalletId,
+    method: 'spend',
+    args: [
+      contractArgAddress(agentKeypair.publicKey()),
+      bytes32(domainHashHex),
+      contractArgAddress(merchant),
+      StellarSdk.nativeToScVal(xlmToStroops(amountXlm), { type: 'i128' }),
+      bytes32(intentHashHex),
+      StellarSdk.nativeToScVal(new Uint8Array(receiptHash), { type: 'bytes' }),
+    ],
+  });
+  const transaction = new StellarSdk.Transaction(prepared.toXDR(), config.stellarNetworkPassphrase);
+  const ownerAuthorizationIndex = ownerAuthIndex(transaction, ownerPublicKey);
+  const ownerAuthorization = transaction.operations[0].auth[ownerAuthorizationIndex];
+  transaction.operations[0].auth[ownerAuthorizationIndex] = await StellarSdk.authorizeEntry(
+    ownerAuthorization,
+    ownerKeypair,
+    latestLedger.sequence + APPROVAL_LEDGER_TTL,
+    config.stellarNetworkPassphrase,
+  );
+  transaction.sign(agentKeypair);
+  const sent = await server.sendTransaction(transaction);
+  if (sent.status !== 'PENDING' && sent.status !== 'DUPLICATE') {
+    throw new Error(`Agent Smart Wallet spend was not accepted: ${sent.status}`);
+  }
+  return { txHash: sent.hash, rpcStatus: sent.status, ...(await awaitSubmittedTransaction(server, sent)) };
+}
+
+/** Read an on-chain smart-wallet balance without signing or changing state. */
+export async function getAgentSmartWalletBalance({ smartWalletId, sourcePublicKey }) {
+  const server = rpc();
+  const account = await server.getAccount(sourcePublicKey);
+  const transaction = new StellarSdk.TransactionBuilder(account, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase: config.stellarNetworkPassphrase,
+  }).addOperation(new StellarSdk.Contract(smartWalletId).call('balance')).setTimeout(30).build();
+  const simulated = await server.simulateTransaction(transaction);
+  if (!simulated.result?.retval) throw new Error('Unable to read Agent Smart Wallet balance');
+  return StellarSdk.scValToNative(simulated.result.retval);
 }
 
 function requireSingleSourceSignature(transaction, expectedTransaction, ownerPublicKey) {
@@ -64,8 +194,11 @@ function requireSingleSourceSignature(transaction, expectedTransaction, ownerPub
 function addressCredentials(entry) {
   const credentials = entry.credentials();
   const credentialType = credentials.switch().name;
-  if (credentialType !== 'sorobanCredentialsAddress' && credentialType !== 'sorobanCredentialsAddressV2') return null;
-  return credentials.address();
+  if (credentialType === 'sorobanCredentialsAddress') return credentials.address();
+  // Stellar protocol upgrades use a distinct union arm for AddressV2. Calling
+  // `address()` on that arm returns an invalid value, so select it explicitly.
+  if (credentialType === 'sorobanCredentialsAddressV2') return credentials.addressV2();
+  return null;
 }
 
 function authEntryOwner(entry) {
@@ -115,6 +248,14 @@ export async function prepareOwnerAction({ actionType, ownerPublicKey, agentPubl
       StellarSdk.nativeToScVal(site.category || 'general', { type: 'symbol' }),
       StellarSdk.nativeToScVal(true),
       StellarSdk.nativeToScVal(BigInt(site.trust_rule_version), { type: 'u32' }),
+    ];
+  } else if (actionType === 'remove_trust_rule') {
+    if (!site) throw new Error('A store is required to remove a trust rule');
+    contractId = config.trustListContractId;
+    method = 'remove_rule';
+    args = [
+      contractArgAddress(ownerPublicKey),
+      bytes32(site.merchant_domain_hash),
     ];
   } else if (actionType === 'deposit') {
     contractId = config.spendGuardContractId;
@@ -182,7 +323,6 @@ export async function prepareGuardedSpend({ ownerPublicKey, agentPublicKey, merc
       bytes32(intentHashHex),
       StellarSdk.nativeToScVal(new Uint8Array(receiptHash), { type: 'bytes' }),
     ],
-    memoHash: receiptHash,
   });
   const ownerIndex = ownerAuthIndex(prepared, ownerPublicKey);
   const authorizationEntry = prepared.operations[0].auth[ownerIndex];

@@ -21,7 +21,7 @@ import {
   ShieldCheck,
 } from '@phosphor-icons/react';
 
-export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect, onConnectStore, storeRefreshKey }) {
+export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect, onConnectStore, storeRefreshKey, walletRefreshKey }) {
   const { user, logout } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -34,15 +34,15 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
   const [showSettings, setShowSettings] = useState(false);
   const [sessions, setSessions] = useState([]);
 
-  const fetchWallet = useCallback(async () => {
+  const fetchWallet = useCallback(async ({ silent = false } = {}) => {
     try {
-      setWalletLoading(true);
+      if (!silent) setWalletLoading(true);
       const { data } = await api.get('/wallet');
       setWallet(data);
     } catch {
-      toast.error('Failed to load wallet');
+      if (!silent) toast.error('Failed to load wallet');
     } finally {
-      setWalletLoading(false);
+      if (!silent) setWalletLoading(false);
     }
   }, [toast]);
 
@@ -62,7 +62,21 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
     fetchWallet();
     fetchSites();
     api.get('/chat/sessions').then(({ data }) => setSessions(data.sessions || [])).catch(() => setSessions([]));
-  }, [fetchWallet, fetchSites, activeSessionId, storeRefreshKey]);
+  }, [fetchWallet, fetchSites, activeSessionId, storeRefreshKey, walletRefreshKey]);
+
+  // Immediate refreshes cover in-app funding/purchases; this short, silent
+  // poll also reflects an on-chain balance change made outside this browser.
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void fetchWallet({ silent: true });
+    };
+    const interval = window.setInterval(refreshIfVisible, 12_000);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [fetchWallet]);
 
   const selectSession = (id) => onSessionSelect?.(id);
 
@@ -74,7 +88,8 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
       if (data.alreadyFunded) {
         toast.info('Wallet already funded');
       } else {
-        toast.success('Wallet funded with 10,000 XLM!');
+        const fundedAmount = data.smartWallet?.fundedAmountXlm;
+        toast.success(`Agent wallet funded with ${fundedAmount || 'test'} XLM!`);
       }
     } catch {
       toast.error('Failed to fund wallet. Try again.');
@@ -164,7 +179,7 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
                   <button className="btn btn-primary" onClick={handleFund} disabled={funding}>
                     {funding ? <><span className="spinner" /> Funding...</> : <><Coins size={14} weight="bold" /> Fund</>}
                   </button>
-                  <a href={wallet?.publicKey ? `https://stellar.expert/explorer/testnet/account/${wallet.publicKey}` : '#'} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Explorer<ArrowSquareOut size={14} /></a>
+                  <a href={wallet?.publicKey ? `https://stellar.expert/explorer/testnet/contract/${wallet.publicKey}` : '#'} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Explorer<ArrowSquareOut size={14} /></a>
                 </div>
               </>
             </div>

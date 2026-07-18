@@ -77,6 +77,7 @@ const config = {
   stellarNetworkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
   trustListContractId: process.env.TRUSTLIST_CONTRACT_ID || '',
   spendGuardContractId: process.env.SPENDGUARD_CONTRACT_ID || '',
+  agentWalletWasmHash: process.env.AGENT_WALLET_WASM_HASH || '',
   settlementTokenContractId: process.env.SETTLEMENT_TOKEN_CONTRACT_ID || '',
 
   // A store must be explicitly registered before the agent can access it.
@@ -88,7 +89,7 @@ if (!Number.isInteger(config.databasePoolMax) || config.databasePoolMax < 1 || c
   throw new Error('DATABASE_POOL_MAX must be an integer between 1 and 50');
 }
 if (nodeEnv === 'production') {
-  for (const [name, value] of Object.entries({ SUPABASE_DB_URL: config.supabaseDbUrl, TRUSTLIST_CONTRACT_ID: config.trustListContractId, SPENDGUARD_CONTRACT_ID: config.spendGuardContractId, SETTLEMENT_TOKEN_CONTRACT_ID: config.settlementTokenContractId })) {
+  for (const [name, value] of Object.entries({ SUPABASE_DB_URL: config.supabaseDbUrl, TRUSTLIST_CONTRACT_ID: config.trustListContractId, AGENT_WALLET_WASM_HASH: config.agentWalletWasmHash, SETTLEMENT_TOKEN_CONTRACT_ID: config.settlementTokenContractId })) {
     if (!value) throw new Error(`${name} is required in production`);
   }
   if (!config.serverPublicUrl.startsWith('https://')) throw new Error('SERVER_PUBLIC_URL must use HTTPS in production');

@@ -1,12 +1,14 @@
 import { createHash } from 'crypto';
 
 /**
- * Build a SHA-256 hash of purchase receipt data for use as a Stellar Memo.hash.
+ * Build a SHA-256 hash of purchase receipt data.
  *
- * The memo serves as an immutable on-chain attestation of the purchase.
- * Anyone with the original receipt data can verify it matches the on-chain hash.
+ * Guarded payments are Soroban invocations, which cannot use Stellar memos.
+ * This hash is instead supplied to SpendGuard and emitted in its `purchased`
+ * contract event as the immutable on-chain receipt attestation.
  *
- * Returns a 32-byte Buffer suitable for Stellar Memo.hash().
+ * The legacy function name is retained so existing receipt verification code
+ * continues to work while the receipt transport is contract-event based.
  */
 export function buildReceiptMemo(receiptData) {
   const payload = JSON.stringify({
@@ -23,8 +25,7 @@ export function buildReceiptMemo(receiptData) {
 }
 
 /**
- * Verify that a receipt data object matches a given memo hash.
- * Used by the frontend or any auditor to validate on-chain receipts.
+ * Verify that receipt data matches the hash attested by SpendGuard.
  */
 export function verifyReceiptMemo(receiptData, memoHashHex) {
   const computed = buildReceiptMemo(receiptData);

@@ -3,6 +3,7 @@ import { lookup } from 'dns/promises';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
 import { decrypt, encrypt } from './crypto.service.js';
+import { removeSitePolicy } from './site.service.js';
 
 const OAUTH_TTL_MS = 10 * 60 * 1000;
 const REQUIRED_SCOPES = ['profile', 'checkout:prepare', 'checkout:confirm', 'orders:read'];
@@ -40,13 +41,15 @@ async function discover(siteUrl) {
   const authorizationUrl = endpoint(oauth.authorization_endpoint, origin, 'authorization_endpoint');
   const tokenUrl = endpoint(oauth.token_endpoint, origin, 'token_endpoint');
   const registrationUrl = endpoint(oauth.registration_endpoint, origin, 'registration_endpoint');
+  if (!oauth.revocation_endpoint) throw new Error('Store must publish an OAuth revocation endpoint');
+  const revocationUrl = endpoint(oauth.revocation_endpoint, origin, 'revocation_endpoint');
   if (!Array.isArray(oauth.code_challenge_methods_supported) || !oauth.code_challenge_methods_supported.includes('S256')) throw new Error('Store must support OAuth PKCE S256');
   const searchUrl = endpoint(commerce.search_endpoint, origin, 'search_endpoint');
   const prepareUrl = endpoint(commerce.checkout_prepare_endpoint, origin, 'checkout_prepare_endpoint');
   const confirmUrl = endpoint(commerce.checkout_confirm_endpoint, origin, 'checkout_confirm_endpoint');
   const merchant = commerce.settlement?.merchant_stellar_address;
   if (commerce.settlement?.network !== 'testnet' || commerce.settlement?.asset !== 'XLM' || typeof merchant !== 'string' || !/^G[A-Z2-7]{55}$/.test(merchant)) throw new Error('Store must publish a valid testnet XLM settlement configuration');
-  return { origin, oauth: { authorizationUrl, tokenUrl, registrationUrl }, commerce: { searchUrl, prepareUrl, confirmUrl, ordersUrl: commerce.orders_endpoint ? endpoint(commerce.orders_endpoint, origin, 'orders_endpoint') : null, settlement: commerce.settlement } };
+  return { origin, oauth: { authorizationUrl, tokenUrl, registrationUrl, revocationUrl }, commerce: { searchUrl, prepareUrl, confirmUrl, ordersUrl: commerce.orders_endpoint ? endpoint(commerce.orders_endpoint, origin, 'orders_endpoint') : null, settlement: commerce.settlement } };
 }
 function readClient(site) { return JSON.parse(decrypt(Buffer.from(site.oauth_client_ciphertext, 'base64'), Buffer.from(site.oauth_client_iv, 'base64'), Buffer.from(site.oauth_client_tag, 'base64'), clientScope(site.id))); }
 
@@ -102,4 +105,70 @@ export async function getStoreAccessToken(site) {
   return token;
 }
 
-export async function disconnectStore(userId, siteId) { const db = getDb(); const [site] = await db`select * from connected_sites where id = ${siteId} and user_id = ${userId}`; if (!site) throw new Error('Store not found'); if (site.auth_token_ciphertext) { try { const token = JSON.parse(decrypt(Buffer.from(site.auth_token_ciphertext, 'base64'), Buffer.from(site.auth_token_iv, 'base64'), Buffer.from(site.auth_token_tag, 'base64'), tokenScope(site.id))); const client = readClient(site); await fetch(site.oauth_server_metadata.tokenUrl.replace(/\/token$/, '/revoke'), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: token.refreshToken || token.accessToken, client_id: client.clientId, client_secret: client.clientSecret }), signal: AbortSignal.timeout(10_000) }); } catch {} } await db`update connected_sites set auth_token_ciphertext = null, auth_token_iv = null, auth_token_tag = null, auth_token_expires_at = null, auth_scope = null, status = 'revoked', updated_at = now() where id = ${site.id}`; return { success: true }; }
+export async function disconnectStore(userId, googleSub, siteId) {
+  const db = getDb();
+  const [site] = await db`select * from connected_sites where id = ${siteId} and user_id = ${userId}`;
+  if (!site) throw new Error('Store not found');
+
+  // The local credential erase is authoritative for JarvisPayz. Remote OAuth
+  // revocation is best-effort: an unavailable merchant must never prevent the
+  // user from cutting off this application's access immediately.
+  let remoteRevoked = !site.auth_token_ciphertext;
+  let remoteRevocationError = null;
+  let policyRevoked = !site.policy_synced_at;
+  let policyRevocationError = null;
+  if (site.auth_token_ciphertext) {
+    try {
+      const token = JSON.parse(decrypt(
+        Buffer.from(site.auth_token_ciphertext, 'base64'),
+        Buffer.from(site.auth_token_iv, 'base64'),
+        Buffer.from(site.auth_token_tag, 'base64'),
+        tokenScope(site.id),
+      ));
+      const client = readClient(site);
+      const revocationUrl = site.oauth_server_metadata?.revocationUrl;
+      if (!revocationUrl) throw new Error('The store did not provide an OAuth revocation endpoint');
+
+      // Revoke the refresh token first because it prevents future access-token
+      // renewal. Also send the access token where one exists; conforming stores
+      // may invalidate the entire authorization grant on either request.
+      const revoke = async (tokenValue) => {
+        if (!tokenValue) return true;
+        const response = await fetch(revocationUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ token: tokenValue, client_id: client.clientId, client_secret: client.clientSecret }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        return response.ok;
+      };
+      const refreshRevoked = await revoke(token.refreshToken);
+      const accessRevoked = await revoke(token.accessToken);
+      remoteRevoked = refreshRevoked && accessRevoked;
+      if (!remoteRevoked) remoteRevocationError = 'The store did not confirm token revocation.';
+    } catch (error) {
+      remoteRevocationError = error.message || 'Remote token revocation could not be confirmed.';
+    }
+  }
+
+  if (site.policy_synced_at) {
+    try {
+      await removeSitePolicy(userId, googleSub, site);
+      policyRevoked = true;
+    } catch (error) {
+      policyRevocationError = error.message || 'On-chain trust-rule removal could not be confirmed.';
+    }
+  }
+
+  await db`update connected_sites set
+    auth_token_ciphertext = null, auth_token_iv = null, auth_token_tag = null,
+    auth_token_expires_at = null, auth_scope = null, authorized_at = null,
+    oauth_client_ciphertext = null, oauth_client_iv = null, oauth_client_tag = null,
+    status = 'revoked',
+    policy_sync_error = ${policyRevocationError},
+    policy_synced_at = case when ${policyRevoked} then null else policy_synced_at end,
+    updated_at = now()
+    where id = ${site.id}`;
+  await db`insert into audit_events (user_id, event_type, payload) values (${userId}, 'store_disconnected', ${db.json({ siteId: site.id, remoteRevoked, remoteRevocationError, policyRevoked, policyRevocationError })})`;
+  return { success: true, remoteRevoked, remoteRevocationError, policyRevoked, policyRevocationError };
+}

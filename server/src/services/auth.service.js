@@ -45,7 +45,7 @@ async function verifyGoogleToken(idToken) {
  * Handle Google login:
  * 1. Verify the Google ID token
  * 2. Find or create the user in DB
- * 3. Ensure a passkey-vault placeholder and a constrained agent signer exist
+ * 3. Ensure the custodial owner account and constrained agent signer exist
  * 4. Issue a JWT
  */
 export async function loginWithGoogle(idToken) {
@@ -59,8 +59,9 @@ export async function loginWithGoogle(idToken) {
   let [user] = await db`select * from users where google_sub = ${googleSub}`;
 
   if (!user) {
-    // 3. Create a user. The owner Stellar key is created only in the browser
-    // after a passkey is registered; the server never generates or sees it.
+    // 3. Create the custodial owner account and separate constrained signer.
+    // Both secrets are encrypted server-side and the C... wallet later holds
+    // all spendable shopping funds under on-chain policy.
     const [createdUser] = await db`
       insert into users (google_sub, email, name, avatar_url)
       values (${googleSub}, ${email}, ${name || email}, ${picture || null}) returning *`;

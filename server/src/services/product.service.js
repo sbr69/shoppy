@@ -1,8 +1,8 @@
 import { generateText, parseJsonResponse } from './llm.service.js';
 
 /**
- * Rank a list of products using LLM and pick the best match.
- * Falls back to price-based sorting when no API key.
+ * Rank merchant candidates by semantic fit to the user's stated need.
+ * The LLM may choose only an indexed candidate and must explain trade-offs.
  *
  * LLM Call 2: Given products + user intent, rank and explain the best pick.
  */
@@ -11,18 +11,11 @@ export async function rankProducts(products, intent) {
     return { bestMatch: null, reasoning: 'No products found matching your criteria.' };
   }
 
-  // If only one product, return it directly
-  if (products.length === 1) {
-    return {
-      bestMatch: products[0],
-      reasoning: `Found exactly one match: ${products[0].name}. It fits your requirements.`,
-      allProducts: products,
-    };
-  }
-
   const prompt = `You are a smart shopping assistant. The user wants: "${intent.rawQuery}"
 ${intent.maxPrice ? `Budget: max ${intent.currency || 'INR'} ${intent.maxPrice}` : ''}
-${intent.preferences?.length ? `Preferences: ${intent.preferences.join(', ')}` : ''}
+${intent.mustHave?.length ? `Must have: ${intent.mustHave.join(', ')}` : ''}
+${intent.preferences?.length ? `Nice to have: ${intent.preferences.join(', ')}` : ''}
+${intent.exclusions?.length ? `Must avoid: ${intent.exclusions.join(', ')}` : ''}
 
 Here are the available products:
 ${JSON.stringify(products.map((p, i) => ({
@@ -31,57 +24,51 @@ ${JSON.stringify(products.map((p, i) => ({
   price: p.price,
   currency: p.currency || 'INR',
   description: p.description,
+  brand: p.brand,
   rating: p.rating,
   inStock: p.inStock,
 })), null, 2)}
 
 Pick the BEST product for the user. Consider:
-1. Price (within budget if specified)
-2. Relevance to what the user asked for
-3. Rating and reviews
-4. Availability
+1. First reject candidates that conflict with a must-have, exclusion, or budget.
+2. Compare meaning, use case, attributes, and product descriptions—not only overlapping words.
+3. Prefer stronger ratings/value only after relevance.
+4. Do not claim an attribute that is missing from the merchant data.
 
 Respond with JSON:
 {
-  "bestIndex": <number>,
-  "reasoning": "<1-2 sentence explanation of why this is the best pick>"
+  "bestIndex": <number or null when no candidate is suitable>,
+  "matchQuality": <number from 0 to 1>,
+  "reasoning": "<1-2 sentence explanation of why this is the best fit and any trade-off>",
+  "unmetRequirements": ["<requirement not verified>"]
 }`;
 
-  const response = await generateText(prompt, { jsonMode: true });
-  const parsed = parseJsonResponse(response);
+  let parsed = null;
+  try {
+    const response = await generateText(prompt, { jsonMode: true });
+    parsed = parseJsonResponse(response);
+  } catch (error) {
+    console.warn('Semantic product ranking unavailable; no product will be selected:', error.message);
+  }
 
+  if (parsed?.bestIndex === null && typeof parsed.reasoning === 'string') {
+    return { bestMatch: null, reasoning: parsed.reasoning, allProducts: products };
+  }
   if (parsed && Number.isInteger(parsed.bestIndex) && parsed.bestIndex >= 0 && parsed.bestIndex < products.length && typeof parsed.reasoning === 'string') {
+    const quality = Number(parsed.matchQuality);
+    if (Number.isFinite(quality) && quality < 0.4) {
+      return { bestMatch: null, reasoning: parsed.reasoning, allProducts: products };
+    }
     return {
       bestMatch: products[parsed.bestIndex],
-      reasoning: parsed.reasoning,
+      reasoning: `${parsed.reasoning}${Array.isArray(parsed.unmetRequirements) && parsed.unmetRequirements.length ? ` Note: ${parsed.unmetRequirements.join(', ')} could not be verified.` : ''}`,
       allProducts: products,
     };
   }
 
-  // Fallback: pick the cheapest in-stock item within budget
-  return fallbackRankProducts(products, intent);
-}
-
-/**
- * Fallback ranking: cheapest in-stock item within budget.
- */
-function fallbackRankProducts(products, intent) {
-  let candidates = products.filter(p => p.inStock !== false);
-
-  if (intent.maxPrice) {
-    const withinBudget = candidates.filter(p => p.price <= intent.maxPrice);
-    if (withinBudget.length > 0) {
-      candidates = withinBudget;
-    }
-  }
-
-  // Sort by price ascending
-  candidates.sort((a, b) => a.price - b.price);
-
-  const best = candidates[0] || products[0];
   return {
-    bestMatch: best,
-    reasoning: `Selected "${best.name}" at ${best.currency || '₹'}${best.price} — the best value within your criteria.`,
+    bestMatch: null,
+    reasoning: 'I could not complete semantic product evaluation right now, so I will not guess a product. Please try again shortly.',
     allProducts: products,
   };
 }

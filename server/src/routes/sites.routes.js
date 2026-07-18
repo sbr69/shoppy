@@ -91,7 +91,7 @@ router.post('/:id/policy/sync', authenticate, async (req, res) => {
 });
 
 router.post('/:id/disconnect', authenticate, async (req, res) => {
-  try { res.json(await disconnectStore(req.user.userId, req.params.id)); } catch (error) { res.status(error.message === 'Store not found' ? 404 : 400).json({ error: error.message }); }
+  try { res.json(await disconnectStore(req.user.userId, req.user.googleSub, req.params.id)); } catch (error) { res.status(error.message === 'Store not found' ? 404 : 400).json({ error: error.message }); }
 });
 
 /**

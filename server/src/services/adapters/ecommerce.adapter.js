@@ -21,7 +21,16 @@ export class EcommerceAdapter extends BaseAdapter {
       signal: AbortSignal.timeout(10_000),
       redirect: 'error',
     });
-    if (!response.ok) throw new Error(`Merchant API request failed (${response.status})`);
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const body = await response.json();
+        detail = typeof body?.error === 'string' ? `: ${body.error.slice(0, 240)}` : '';
+      } catch {
+        // Do not expose an arbitrary merchant response body in user-facing logs.
+      }
+      throw new Error(`Merchant API request failed (${response.status})${detail}`);
+    }
     const type = response.headers.get('content-type') || '';
     if (!type.includes('application/json')) throw new Error('Merchant API returned an invalid response type');
     return response.json();

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildReceiptMemo, verifyReceiptMemo } from '../src/services/receipt.service.js';
 import { parseFiniteNonNegative, validateChatMessage, validateSiteUpdate } from '../src/services/validation.service.js';
 import { xlmToStroops } from '../src/services/soroban.service.js';
+import { normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -36,4 +37,15 @@ test('XLM conversion retains exact seven-decimal stroop precision', () => {
   assert.equal(xlmToStroops(2), 20_000_000n);
   assert.throws(() => xlmToStroops('0'));
   assert.throws(() => xlmToStroops('1.00000001'));
+});
+
+test('semantic decisions fail closed without a pending purchase', () => {
+  assert.equal(normalizeSemanticIntent({ action: 'confirm_purchase' }).action, 'other');
+  assert.equal(normalizeSemanticIntent({ action: 'confirm_purchase' }, {
+    pendingPurchase: { state: 'selected', productName: 'Earbuds' },
+  }).action, 'confirm_purchase');
+  assert.equal(normalizeSemanticIntent({
+    action: 'search', product: 'wireless earbuds', quantity: 1, searchQueries: ['Bluetooth earphones'],
+  }).action, 'search');
+  assert.deepEqual(retrievalQueries({ product: 'wireless earbuds', searchQueries: ['Bluetooth earphones', 'wireless earbuds'] }), ['wireless earbuds', 'Bluetooth earphones']);
 });

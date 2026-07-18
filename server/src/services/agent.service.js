@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import getDb from '../db/database.js';
-import { parseIntent } from './intent.service.js';
+import { parseIntent, retrievalQueries } from './intent.service.js';
 import { rankProducts } from './product.service.js';
 import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
 import { executeCustodialPayment } from './payment.service.js';
@@ -13,15 +13,28 @@ const INTENT_TTL_MS = 10 * 60 * 1000;
 
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
+  const [pendingRows, recentMessages] = await Promise.all([
+    db`select state, product_json, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') order by updated_at desc limit 1`,
+    db`select role, content from messages where session_id = ${sessionId} order by created_at desc limit 4`,
+  ]);
   await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
   await db`update chat_sessions set title = case when title = 'New shopping chat' then left(${message}, 72) else title end, updated_at = now() where id = ${sessionId}`;
-  const intent = await parseIntent(message);
+  const pending = pendingRows[0];
+  const intent = await parseIntent(message, {
+    pendingPurchase: pending ? {
+      state: pending.state,
+      productName: pending.product_json?.name,
+      merchantOrderId: pending.merchant_order_id,
+      finalAmountXlm: pending.price_xlm,
+    } : null,
+    recentMessages: [...recentMessages].reverse(),
+  });
   let response;
   if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
   else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
   else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
   else if (intent.action === 'greeting') response = { type: 'text', content: 'Hi! Tell me what you want to buy and I will search your authorized stores.' };
-  else response = { type: 'text', content: 'I can search authorized stores, prepare an order, then require your confirmation before a guarded on-chain payment.' };
+  else response = { type: 'text', content: intent.clarification || 'Tell me what you want to find, or ask about the item already shown. I will always ask before placing a payment.' };
   const [saved] = await db`insert into messages (session_id, role, content, metadata) values (${sessionId}, 'agent', ${response.content}, ${response.metadata ? db.json(response.metadata) : null}) returning id`;
   await db`update chat_sessions set updated_at = now() where id = ${sessionId}`;
   return { id: saved.id, ...response };
@@ -35,8 +48,16 @@ async function handleSearch(userId, sessionId, intent) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No authorized stores are active.' });
     return { type: 'text', content: 'You do not have an active, authorized store.' };
   }
-  const results = await Promise.allSettled(sites.map(async (site) => (await new EcommerceAdapter(site).searchProducts(intent.product, { maxPrice: intent.maxPrice, minPrice: intent.minPrice })).map((product) => ({ ...product, siteId: site.id }))));
-  const products = results.filter((result) => result.status === 'fulfilled').flatMap((result) => result.value);
+  const queries = retrievalQueries(intent);
+  if (!queries.length) return { type: 'text', content: 'Tell me a little more about the product you want me to find.' };
+  const results = await Promise.allSettled(sites.flatMap((site) => queries.map(async (query) =>
+    (await new EcommerceAdapter(site).searchProducts(query, { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
+      .map((product) => ({ ...product, siteId: site.id, retrievalQuery: query })),
+  )));
+  const products = [...new Map(results
+    .filter((result) => result.status === 'fulfilled')
+    .flatMap((result) => result.value)
+    .map((product) => [`${product.siteId}:${product.id}`, product])).values()];
   if (!products.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
     return { type: 'text', content: 'No live, in-stock products matched your request in authorized stores.' };
@@ -48,7 +69,7 @@ async function handleSearch(userId, sessionId, intent) {
   const [created] = await db`
     insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
     values (${userId}, ${sessionId}, ${site.id}, ${db.json(bestMatch)}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
-  await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: created.id, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: created.quantity } });
+  await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: created.id, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: created.quantity, queries } });
   return { type: 'product_suggestion', content: `I found a live match at ${site.site_name}. I will verify the merchant total before any payment.`, metadata: { product: bestMatch, reasoning, purchaseIntentId: created.id, quantity: created.quantity, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 

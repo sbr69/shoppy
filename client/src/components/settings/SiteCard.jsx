@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import api from '../../services/api';
 import { Storefront, Pencil, Plug } from '@phosphor-icons/react';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function SiteCard({ site, onUpdate, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [cap, setCap] = useState(site.spending_cap);
   const [saving, setSaving] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const toast = useToast();
 
   const handleSaveCap = async () => {
     try {
@@ -35,10 +37,19 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
     if (!confirm(`Disconnect "${site.site_name}"? The agent will lose access until you connect it again.`)) return;
     try {
       setDisconnecting(true);
-      await api.post(`/sites/${site.id}/disconnect`);
-      onUpdate({ ...site, status: 'revoked' });
+      const { data } = await api.post(`/sites/${site.id}/disconnect`);
+      onRemove(site.id);
+      if (data.remoteRevoked === false || data.policyRevoked === false) {
+        const detail = data.policyRevoked === false
+          ? 'On-chain rule removal could not be confirmed; support should retry it.'
+          : 'The store did not confirm remote token revocation.';
+        toast.warning(`Store disconnected from JarvisPayz. ${detail}`);
+      } else {
+        toast.success(`${site.site_name} disconnected. The agent no longer has access.`);
+      }
     } catch (err) {
-      console.error('Remove error:', err);
+      console.error('Disconnect error:', err);
+      toast.error(err.response?.data?.error || 'Could not disconnect this store. Please try again.');
     } finally {
       setDisconnecting(false);
     }

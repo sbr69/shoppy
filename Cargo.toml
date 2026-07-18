@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/policy-interface", "contracts/trust-list", "contracts/spend-guard"]
+members = ["contracts/policy-interface", "contracts/trust-list", "contracts/spend-guard", "contracts/agent-wallet"]
 
 [workspace.dependencies]
 soroban-sdk = "25.0.1"

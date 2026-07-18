@@ -136,7 +136,7 @@ export default function WalletCard() {
           )}
         </button>
         <a
-          href={wallet?.publicKey ? `https://stellar.expert/explorer/testnet/account/${wallet.publicKey}` : '#'}
+          href={wallet?.publicKey ? `https://stellar.expert/explorer/testnet/contract/${wallet.publicKey}` : '#'}
           target="_blank"
           rel="noopener noreferrer"
           className="btn btn-ghost wallet-explorer-btn"
