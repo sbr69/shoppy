@@ -1,13 +1,16 @@
 import axios from 'axios';
 
-// Use Vite's same-origin proxy in development. This also works when the
-// frontend is opened through a LAN address instead of localhost.
-const API_BASE = import.meta.env.DEV
-  ? ''
-  : (import.meta.env.VITE_API_URL || 'http://localhost:3001');
+// Development uses Vite's proxy. In production, the default is Vercel's
+// same-origin `/api` rewrite, so browser DNS never needs to resolve the
+// private API host directly. An explicit VITE_API_URL remains supported for
+// alternate deployments.
+const configuredApiOrigin = import.meta.env.VITE_API_URL?.replace(/\/$/, '');
+const API_BASE = import.meta.env.DEV || !configuredApiOrigin
+  ? '/api'
+  : `${configuredApiOrigin}/api`;
 
 const api = axios.create({
-  baseURL: `${API_BASE}/api`,
+  baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
