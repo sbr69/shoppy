@@ -7,6 +7,63 @@ import api from '../../services/api';
 import ConnectSiteModal from '../settings/ConnectSiteModal';
 import StoreDetailsModal from '../settings/StoreDetailsModal';
 
+function WorkspaceLoadingSkeleton({ telemetryOpen }) {
+  return (
+    <div className="chat-workspace workspace-loading-shell" aria-busy="true" aria-live="polite">
+      <p className="sr-only">Preparing your shopping workspace.</p>
+      <section className="chat-container workspace-skeleton-card" aria-hidden="true">
+        <div className="workspace-skeleton-chat-header">
+          <span className="workspace-skeleton-avatar" />
+          <div>
+            <span className="workspace-skeleton-line workspace-skeleton-title" />
+            <span className="workspace-skeleton-line workspace-skeleton-status" />
+          </div>
+          <span className="workspace-skeleton-control" />
+        </div>
+        <div className="workspace-skeleton-messages">
+          <div className="workspace-skeleton-message">
+            <span className="workspace-skeleton-avatar workspace-skeleton-avatar--small" />
+            <span className="workspace-skeleton-bubble workspace-skeleton-bubble--wide" />
+          </div>
+          <div className="workspace-skeleton-message workspace-skeleton-message--user">
+            <span className="workspace-skeleton-bubble workspace-skeleton-bubble--medium" />
+          </div>
+          <div className="workspace-skeleton-message">
+            <span className="workspace-skeleton-avatar workspace-skeleton-avatar--small" />
+            <span className="workspace-skeleton-bubble workspace-skeleton-bubble--short" />
+          </div>
+        </div>
+        <div className="workspace-skeleton-input">
+          <span className="workspace-skeleton-line workspace-skeleton-input-line" />
+          <span className="workspace-skeleton-control" />
+        </div>
+      </section>
+      {telemetryOpen && (
+        <aside className="telemetry-panel workspace-skeleton-panel" aria-hidden="true">
+          <div className="workspace-skeleton-panel-header">
+            <span className="workspace-skeleton-avatar workspace-skeleton-avatar--small" />
+            <span className="workspace-skeleton-line workspace-skeleton-panel-title" />
+          </div>
+          <div className="workspace-skeleton-panel-body">
+            <span className="workspace-skeleton-eyebrow" />
+            <div className="workspace-skeleton-metric-card">
+              <span className="workspace-skeleton-line workspace-skeleton-balance" />
+              <span className="workspace-skeleton-line workspace-skeleton-address" />
+              <div className="workspace-skeleton-actions">
+                <span className="workspace-skeleton-button" />
+                <span className="workspace-skeleton-button" />
+              </div>
+            </div>
+            <span className="workspace-skeleton-eyebrow" />
+            <div className="workspace-skeleton-store" />
+            <div className="workspace-skeleton-store workspace-skeleton-store--short" />
+          </div>
+        </aside>
+      )}
+    </div>
+  );
+}
+
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState('chat');
@@ -52,7 +109,9 @@ export default function AppLayout() {
         activeSessionId={sessionId}
         onSessionSelect={(id) => { setSessionId(id); setView('chat'); setSidebarOpen(false); }}
       />
-      {view === 'chat' && !sessionBootstrapping && (
+      {view === 'chat' && (sessionBootstrapping ? (
+        <WorkspaceLoadingSkeleton telemetryOpen={telemetryOpen} />
+      ) : (
         <div className="chat-workspace">
           <ChatWindow
             sessionId={sessionId}
@@ -70,7 +129,7 @@ export default function AppLayout() {
             onStoreSelect={setSelectedStore}
           />
         </div>
-      )}
+      ))}
       {view === 'orders' && <OrdersView />}
       {view === 'wallet' && <WalletActivityView />}
       <ConnectSiteModal

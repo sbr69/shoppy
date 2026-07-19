@@ -380,6 +380,81 @@ button:disabled, [aria-disabled='true'] { cursor: not-allowed; opacity: 0.56; }
   transform: translateX(100%) !important;
   pointer-events: none;
 }
+
+/* ─── Workspace loading shell ─── */
+.workspace-loading-shell { pointer-events: none; }
+.workspace-loading-shell .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.workspace-skeleton-card,
+.workspace-skeleton-panel { animation: editorial-rise 260ms var(--ease-out) both; }
+.workspace-skeleton-card { display: flex; flex: 1; flex-direction: column; }
+.workspace-skeleton-panel { display: flex; flex-direction: column; }
+.workspace-skeleton-chat-header,
+.workspace-skeleton-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 74px;
+  padding: 0 1.35rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.workspace-skeleton-panel-header { min-height: auto; padding: 1.3rem 1.15rem 1rem; }
+.workspace-skeleton-control { width: 38px; height: 38px; margin-left: auto; border-radius: 7px; }
+.workspace-skeleton-avatar { width: 34px; height: 34px; border-radius: 8px; flex: 0 0 auto; }
+.workspace-skeleton-avatar--small { width: 28px; height: 28px; border-radius: 50%; }
+.workspace-skeleton-line { display: block; height: 10px; border-radius: 99px; }
+.workspace-skeleton-title { width: 104px; height: 12px; margin-bottom: 6px; }
+.workspace-skeleton-status { width: 48px; height: 7px; }
+.workspace-skeleton-messages { display: flex; flex: 1; flex-direction: column; gap: 1.55rem; padding: clamp(1.2rem, 3vw, 2.4rem) clamp(1rem, 5vw, 4.4rem); }
+.workspace-skeleton-message { display: flex; align-items: flex-start; gap: 0.7rem; }
+.workspace-skeleton-message--user { justify-content: flex-end; }
+.workspace-skeleton-bubble { display: block; height: 48px; border-radius: 13px; }
+.workspace-skeleton-bubble--wide { width: min(360px, 62%); }
+.workspace-skeleton-bubble--medium { width: min(240px, 48%); }
+.workspace-skeleton-bubble--short { width: min(180px, 38%); }
+.workspace-skeleton-input { display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem clamp(1rem, 5vw, 4.4rem) 1.1rem; border-top: 1px solid var(--border-subtle); }
+.workspace-skeleton-input-line { flex: 1; height: 46px; border-radius: 11px; }
+.workspace-skeleton-panel-body { display: flex; flex: 1; flex-direction: column; gap: 0.95rem; padding: 1rem; }
+.workspace-skeleton-eyebrow { width: 86px; height: 8px; border-radius: 99px; }
+.workspace-skeleton-metric-card { display: flex; flex-direction: column; gap: 0.85rem; padding: 1rem; border: 1px solid #cbd5c5; border-radius: 12px; background: var(--sage-wash); }
+.workspace-skeleton-balance { width: 45%; height: 24px; }
+.workspace-skeleton-address { width: 100%; height: 28px; }
+.workspace-skeleton-actions { display: flex; gap: 0.5rem; }
+.workspace-skeleton-button { flex: 1; height: 32px; border-radius: 7px; }
+.workspace-skeleton-store { height: 58px; border: 1px solid var(--border-default); border-radius: 10px; }
+.workspace-skeleton-store--short { width: 78%; }
+.workspace-skeleton-avatar,
+.workspace-skeleton-line,
+.workspace-skeleton-control,
+.workspace-skeleton-bubble,
+.workspace-skeleton-eyebrow,
+.workspace-skeleton-button,
+.workspace-skeleton-store {
+  background: linear-gradient(100deg, rgba(218, 211, 198, 0.72) 20%, rgba(248, 245, 238, 0.96) 42%, rgba(218, 211, 198, 0.72) 64%);
+  background-size: 220% 100%;
+  animation: workspace-shimmer 1.35s linear infinite;
+}
+@keyframes workspace-shimmer { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .workspace-skeleton-card,
+  .workspace-skeleton-panel,
+  .workspace-skeleton-avatar,
+  .workspace-skeleton-line,
+  .workspace-skeleton-control,
+  .workspace-skeleton-bubble,
+  .workspace-skeleton-eyebrow,
+  .workspace-skeleton-button,
+  .workspace-skeleton-store { animation: none; }
+}
 .telemetry-header { padding: 1.3rem 1.15rem 1rem; border-color: var(--border-default); background: transparent; }
 .telemetry-header h2 { color: var(--ink); font-family: var(--font-sans); font-size: 0.88rem; }
 .telemetry-body { padding: 1rem; }
