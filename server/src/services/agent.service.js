@@ -54,7 +54,7 @@ const ratingText = (product) => {
   const rating = numberOrNull(product.rating);
   const reviewCount = numberOrNull(product.reviewCount);
   if (rating === null) return 'no merchant rating is available';
-  return `${rating.toFixed(1)}/5${reviewCount !== null ? ` from ${reviewCount} review${reviewCount === 1 ? '' : 's'}` : ''}`;
+  return `${rating.toFixed(1)}/5${reviewCount && reviewCount > 0 ? ` from ${reviewCount} review${reviewCount === 1 ? '' : 's'}` : ''}`;
 };
 
 async function selectedQuestionProducts(userId, sessionId) {
@@ -63,8 +63,33 @@ async function selectedQuestionProducts(userId, sessionId) {
   return rows.map(questionProduct);
 }
 
-async function resolveQuestionProduct(userId, sessionId, intent) {
+/** Ratings change independently of a saved recommendation, so compare live merchant data. */
+async function refreshSelectedQuestionProducts(userId, sessionId) {
   const selected = await selectedQuestionProducts(userId, sessionId);
+  if (!selected.length) return selected;
+  const db = getDb();
+  const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
+  return Promise.all(selected.map(async (product) => {
+    const site = sites.find((candidate) => candidate.id === product.siteId);
+    if (!site) return product;
+    try {
+      const live = (await new EcommerceAdapter(site).searchProducts(product.name, {})).find((candidate) => candidate.id === product.id);
+      if (!live) return product;
+      const refreshed = { ...product, rating: live.rating, reviewCount: live.reviewCount };
+      const { purchaseIntentId, siteId, ...productJson } = refreshed;
+      await db`update purchase_intents set product_json = ${db.json(productJson)}, updated_at = now() where id = ${purchaseIntentId} and user_id = ${userId} and session_id = ${sessionId}`;
+      return refreshed;
+    } catch (error) {
+      console.warn('Merchant rating refresh skipped:', error.message);
+      return product;
+    }
+  }));
+}
+
+async function resolveQuestionProduct(userId, sessionId, intent) {
+  const selected = intent.questionType === 'compare_ratings'
+    ? await refreshSelectedQuestionProducts(userId, sessionId)
+    : await selectedQuestionProducts(userId, sessionId);
   if (intent.questionProductId) {
     const direct = selected.find((product) => product.purchaseIntentId === intent.questionProductId);
     if (direct) return direct;
@@ -125,8 +150,7 @@ async function handleQuestion(userId, sessionId, intent) {
     rated.sort((left, right) => numberOrNull(right.rating) - numberOrNull(left.rating)
       || (numberOrNull(right.reviewCount) || 0) - (numberOrNull(left.reviewCount) || 0));
     const best = rated[0];
-    const comparison = rated.map((product) => `${product.name} — ${ratingText(product)}`).join('\n- ');
-    return { type: 'text', content: `**Best rated option**\n\n**${best.name}** — **${ratingText(best)}**\n\n- ${comparison}\n\nSelect a product card to verify its checkout.` };
+    return { type: 'text', content: `**${best.name}**\n\nIt has the highest merchant rating among the options you just saw: **${ratingText(best)}**.` };
   }
   if (intent.questionType === 'review_summary') {
     const product = await resolveQuestionProduct(userId, sessionId, intent);
