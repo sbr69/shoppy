@@ -140,8 +140,8 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
     }
   };
 
-  const handleConfirmPurchase = (purchaseIntentId) => {
-    sendMessage(`Confirm purchase ${purchaseIntentId}`);
+  const handleAddToCart = (purchaseIntentId) => {
+    sendMessage(`Add to cart ${purchaseIntentId}`);
   };
 
   const handleSkip = () => {
@@ -163,7 +163,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
             <ProductCard
               product={msg.metadata.product}
               reasoning={msg.metadata.reasoning}
-              onConfirm={() => handleConfirmPurchase(msg.metadata.purchaseIntentId)}
+              onConfirm={() => handleAddToCart(msg.metadata.purchaseIntentId)}
               onSkip={handleSkip}
               historical={msg.historical}
             />
@@ -175,7 +175,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
                   key={alternative.purchaseIntentId || product.id}
                   product={product}
                   reasoning="Alternative option"
-                  onConfirm={() => handleConfirmPurchase(alternative.purchaseIntentId)}
+                  onConfirm={() => handleAddToCart(alternative.purchaseIntentId)}
                   onSkip={handleSkip}
                   historical={msg.historical || !alternative.purchaseIntentId}
                 />
@@ -238,7 +238,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
             <div className="receipt-card-row">
               <span className="receipt-card-label">Price</span>
               <span className="receipt-card-value">
-                &#8377;{msg.metadata.product.price?.toLocaleString()}
+                XLM {Number(msg.metadata.product.price || 0).toLocaleString(undefined, { maximumFractionDigits: 7 })}
               </span>
             </div>
           </div>

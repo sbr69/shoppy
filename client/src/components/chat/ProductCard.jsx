@@ -51,7 +51,7 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip, his
             id="product-buy-btn"
           >
             <ShoppingCart size={14} weight="bold" />
-            Review Checkout
+            Add to cart
           </button>
           <button
             className="btn btn-secondary"

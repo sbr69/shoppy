@@ -43,9 +43,31 @@ export class EcommerceAdapter extends BaseAdapter {
     url.searchParams.set('q', query);
     if (filters.maxPrice !== null && filters.maxPrice !== undefined) url.searchParams.set('maxPrice', String(filters.maxPrice));
     if (filters.minPrice !== null && filters.minPrice !== undefined) url.searchParams.set('minPrice', String(filters.minPrice));
+    if (typeof filters.category === 'string' && filters.category.trim()) url.searchParams.set('category', filters.category.trim());
+    if (filters.inStock !== undefined) url.searchParams.set('in_stock', String(Boolean(filters.inStock)));
+    if (typeof filters.sort === 'string' && filters.sort.trim()) url.searchParams.set('sort', filters.sort.trim());
+    if (Number.isInteger(filters.limit) && filters.limit > 0) url.searchParams.set('limit', String(Math.min(filters.limit, 100)));
+    if (Number.isInteger(filters.offset) && filters.offset >= 0) url.searchParams.set('offset', String(filters.offset));
     const body = await this.request(url);
     const products = Array.isArray(body.products) ? body.products : [];
-    return products.map((product) => this.normalizeProduct({ ...product, id: product.product_id, image: product.image_url, inStock: Number(product.stock) > 0 })).filter((product) => product.id && product.name && product.price > 0 && product.inStock);
+    return products.map((product) => {
+      const category = typeof product.category === 'object' && product.category
+        ? (product.category.slug || product.category.name || null)
+        : product.category;
+      return this.normalizeProduct({
+        ...product,
+        id: product.product_id,
+        price: product.price ?? product.price_xlm,
+        image: product.image_url,
+        category,
+        categoryName: product.category_name,
+        productType: product.product_type,
+        taxonomyPath: product.taxonomy_path,
+        searchAliases: product.search_aliases,
+        merchantRelevance: product.relevance,
+        inStock: product.availability ? product.availability === 'in_stock' : Number(product.stock) > 0,
+      });
+    }).filter((product) => product.id && product.name && product.price > 0 && product.inStock);
   }
 
   async reviewUrlTemplate() {

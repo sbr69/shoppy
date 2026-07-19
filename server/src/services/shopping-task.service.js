@@ -32,6 +32,8 @@ function safeProduct(product = {}) {
     price: number(product.price),
     currency: text(product.currency, 16),
     rating: number(product.rating),
+    merchantRelevance: number(product.merchantRelevance),
+    semanticScore: number(product.semanticScore),
   };
 }
 

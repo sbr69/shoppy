@@ -48,6 +48,25 @@ export class BaseAdapter {
    * Normalize a product object to a consistent shape.
    */
   normalizeProduct(raw) {
+    const text = (value) => typeof value === 'string' || typeof value === 'number'
+      ? String(value).trim().slice(0, 500)
+      : '';
+    const textList = (value) => {
+      const entries = Array.isArray(value) ? value : value === null || value === undefined ? [] : [value];
+      return entries.map((entry) => {
+        const direct = text(entry);
+        if (direct) return direct;
+        if (!entry || typeof entry !== 'object') return '';
+        const key = text(entry.key ?? entry.name ?? entry.label);
+        const attributeValue = entry.value ?? entry.values ?? entry.text;
+        const values = Array.isArray(attributeValue)
+          ? attributeValue.map(text).filter(Boolean).join(', ')
+          : text(attributeValue);
+        return key && values ? `${key}: ${values}` : key || values;
+      }).filter(Boolean);
+    };
+    const finiteNumberOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+
     return {
       id: raw.id || null,
       name: raw.name || 'Unknown Product',
@@ -63,8 +82,17 @@ export class BaseAdapter {
       })(),
       brand: raw.brand || null,
       category: raw.category || null,
-      tags: Array.isArray(raw.tags) ? raw.tags : [],
-      attributes: Array.isArray(raw.attributes) ? raw.attributes : [],
+      categoryName: raw.categoryName || raw.category_name || null,
+      productType: raw.productType || raw.product_type || null,
+      seller: raw.seller || null,
+      tags: textList(raw.tags),
+      attributes: textList(raw.attributes),
+      taxonomyPath: textList(raw.taxonomyPath ?? raw.taxonomy_path),
+      searchAliases: textList(raw.searchAliases ?? raw.search_aliases),
+      // Merchant relevance is a discovery hint only. It is deliberately kept
+      // separate from the agent's embedding-derived semanticScore so a store
+      // can never override the agent's semantic or payment safeguards.
+      merchantRelevance: finiteNumberOrNull(raw.merchantRelevance ?? raw.merchant_relevance ?? raw.relevance),
       inStock: raw.inStock !== false,
       siteName: this.siteName,
       siteUrl: this.baseUrl,

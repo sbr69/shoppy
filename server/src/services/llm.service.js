@@ -91,7 +91,8 @@ export function parseJsonResponse(text) {
   try {
     return JSON.parse(cleaned.trim());
   } catch (err) {
-    console.error('❌ JSON parse error:', err.message, '\nRaw text:', text);
+    // Do not put user conversation or merchant catalog text into server logs.
+    console.warn('Gemini JSON response could not be parsed:', err.message);
     return null;
   }
 }

@@ -26,7 +26,14 @@ test('merchant contract supports search, verified checkout preparation, and idem
   globalThis.fetch = async (url, options = {}) => {
     requests.push({ url: String(url), options });
     if (String(url).startsWith(site.agent_manifest.searchUrl)) {
-      return new Response(JSON.stringify({ products: [{ product_id: 'earbuds-1', name: 'Wireless earbuds', description: 'Noise isolation', price: 299, currency: 'XLM', stock: 8, rating: 4.6, image_url: null }] }), { headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ products: [{
+        product_id: 'earbuds-1', name: 'Wireless earbuds', description: 'Noise isolation', price: 299, currency: 'XLM', stock: 8, rating: 4.6, image_url: null,
+        category_name: 'Electronics', product_type: 'earbuds',
+        taxonomy_path: ['Electronics', 'Audio', 'Headphones & Earbuds'],
+        search_aliases: ['wireless audio', 'bluetooth earbuds'],
+        attributes: ['Bluetooth', { key: 'Battery life', value: '24 hours' }],
+        relevance: 0.91,
+      }] }), { headers: { 'content-type': 'application/json' } });
     }
     if (String(url) === site.agent_manifest.prepareUrl) {
       return new Response(JSON.stringify({ checkout_id: 'checkout-1', currency: 'XLM', amount_xlm: '299.0000000', merchant_stellar_address: merchant, network: 'testnet' }), { headers: { 'content-type': 'application/json' } });
@@ -35,10 +42,19 @@ test('merchant contract supports search, verified checkout preparation, and idem
   };
 
   try {
-    const products = await adapter().searchProducts('headphones', { maxPrice: 500 });
+    const products = await adapter().searchProducts('headphones', { maxPrice: 500, limit: 48, offset: 96 });
     assert.equal(products.length, 1);
     assert.equal(products[0].currency, 'XLM');
     assert.equal(products[0].price, 299);
+    assert.equal(products[0].categoryName, 'Electronics');
+    assert.equal(products[0].productType, 'earbuds');
+    assert.deepEqual(products[0].taxonomyPath, ['Electronics', 'Audio', 'Headphones & Earbuds']);
+    assert.deepEqual(products[0].searchAliases, ['wireless audio', 'bluetooth earbuds']);
+    assert.deepEqual(products[0].attributes, ['Bluetooth', 'Battery life: 24 hours']);
+    assert.equal(products[0].merchantRelevance, 0.91);
+    const searchUrl = new URL(requests[0].url);
+    assert.equal(searchUrl.searchParams.get('limit'), '48');
+    assert.equal(searchUrl.searchParams.get('offset'), '96');
     const checkout = await adapter().prepareCheckout(products[0], 1, 'idempotency-1', 'Shipping address');
     assert.equal(checkout.orderId, 'checkout-1');
     const confirmation = await adapter().confirmPayment(checkout.orderId, txHash, 'idempotency-1');

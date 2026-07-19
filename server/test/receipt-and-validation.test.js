@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { buildReceiptMemo, verifyReceiptMemo } from '../src/services/receipt.service.js';
 import { parseFiniteNonNegative, validateChatMessage, validateSiteUpdate } from '../src/services/validation.service.js';
 import { xlmToStroops } from '../src/services/soroban.service.js';
-import { normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
-import { availableCatalogCategories, noCredibleMatchMessage, paymentFailureDetail, resolveActiveProductReference, resolveActiveProductReferences } from '../src/services/agent.service.js';
+import { literalCatalogQueries, normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
+import { availableCatalogCategories, browseMerchantCatalog, isScopedContinuationTurn, mergeCatalogProducts, noCredibleMatchMessage, paymentFailureDetail, recommendationCandidates, resolveActiveProductReference, resolveActiveProductReferences, shouldBrowseCatalogFallback, supportedAlternatives } from '../src/services/agent.service.js';
 import { taskGoalToIntent, taskSeenProductKeys } from '../src/services/shopping-task.service.js';
-import { chooseRankedProduct } from '../src/services/product.service.js';
+import { chooseRankedProduct, fallbackSemanticRank } from '../src/services/product.service.js';
+import { boundedConversation, buildConversationMemory } from '../src/services/conversation-memory.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -51,6 +52,9 @@ test('semantic decisions fail closed without a pending purchase', () => {
     action: 'search', product: 'wireless earbuds', quantity: 1, searchQueries: ['Bluetooth earphones'],
   }).action, 'search');
   assert.deepEqual(retrievalQueries({ product: 'wireless earbuds', searchQueries: ['Bluetooth earphones', 'wireless earbuds'] }), ['wireless earbuds', 'Bluetooth earphones']);
+  assert.deepEqual(literalCatalogQueries(['true wireless earbuds', 'wireless headphones']), [
+    'true wireless earbuds', 'wireless headphones', 'earbuds', 'headphones',
+  ]);
 });
 
 test('semantic follow-up questions stay scoped to products already shown', () => {
@@ -88,6 +92,88 @@ test('semantic alternatives preserve the active shopping goal instead of startin
   assert.equal(normalizeSemanticIntent({ action: 'browse_alternatives' }).action, 'other');
 });
 
+test('catalog browsing retrieves later pages instead of mistaking the newest page for the whole store', async () => {
+  const calls = [];
+  const pages = [
+    [{ id: 'toy', name: 'Building Blocks', category: 'toys' }, { id: 'beauty', name: 'Face Serum', category: 'beauty' }],
+    [{ id: 'kettle', name: 'Electric Kettle', category: 'home-kitchen' }, { id: 'headphones', name: 'Wireless Headphones', category: 'electronics' }],
+    [{ id: 'earbuds', name: 'Wireless Earbuds', category: 'electronics' }],
+  ];
+  const adapter = {
+    async searchProducts(query, filters) {
+      calls.push({ query, offset: filters.offset });
+      return pages[filters.offset / 2] || [];
+    },
+  };
+  const products = await browseMerchantCatalog(adapter, {}, { pageSize: 2, maxPages: 4 });
+  assert.deepEqual(calls, [{ query: '', offset: 0 }, { query: '', offset: 2 }, { query: '', offset: 4 }]);
+  assert.deepEqual(products.map((product) => product.id), ['toy', 'beauty', 'kettle', 'headphones', 'earbuds']);
+  assert.deepEqual(availableCatalogCategories(products), ['Electronics', 'Beauty', 'Home Kitchen', 'Toys']);
+});
+
+test('catalog browsing stops safely when a merchant ignores offset pagination', async () => {
+  let calls = 0;
+  const adapter = {
+    async searchProducts() {
+      calls += 1;
+      return [{ id: 'first' }, { id: 'second' }];
+    },
+  };
+  const products = await browseMerchantCatalog(adapter, {}, { pageSize: 2, maxPages: 8 });
+  assert.equal(calls, 2);
+  assert.deepEqual(products.map((product) => product.id), ['first', 'second']);
+});
+
+test('duplicate merchant search and browse results retain the strongest relevance and rich taxonomy', () => {
+  const products = mergeCatalogProducts([
+    {
+      id: 'earbuds-1', siteId: 'store-1', name: 'Wireless Earbuds',
+      merchantRelevance: 0.91, searchAliases: ['wireless audio'],
+    },
+    {
+      id: 'earbuds-1', siteId: 'store-1', name: 'Wireless Earbuds',
+      merchantRelevance: null, taxonomyPath: ['Electronics', 'Audio', 'Earbuds'],
+      attributes: ['Battery life: 24 hours'],
+    },
+    { id: 'vacuum-1', siteId: 'store-1', name: 'Robot Vacuum', merchantRelevance: 0.2 },
+  ]);
+  assert.equal(products.length, 2);
+  const earbuds = products.find((product) => product.id === 'earbuds-1');
+  assert.equal(earbuds.merchantRelevance, 0.91);
+  assert.deepEqual(earbuds.searchAliases, ['wireless audio']);
+  assert.deepEqual(earbuds.taxonomyPath, ['Electronics', 'Audio', 'Earbuds']);
+  assert.deepEqual(earbuds.attributes, ['Battery life: 24 hours']);
+});
+
+test('catalog fallback runs only when merchant search has no credible semantic signal', () => {
+  assert.equal(shouldBrowseCatalogFallback([]), true);
+  assert.equal(shouldBrowseCatalogFallback([{ name: 'Unrelated item', merchantRelevance: 0.12 }]), true);
+  assert.equal(shouldBrowseCatalogFallback([{ name: 'Wireless earbuds', merchantRelevance: 0.84 }]), false);
+});
+
+test('a missing semantic alternative never becomes an arbitrary high-rated product card', () => {
+  const earbuds = { id: 'earbuds', siteId: 'store-1', name: 'QuietComfort Earbuds' };
+  const robotVacuum = { id: 'vacuum', siteId: 'store-1', name: 'Robot Vacuum Cleaner', rating: 4.4 };
+  assert.deepEqual(recommendationCandidates(earbuds, []), [earbuds]);
+  assert.deepEqual(recommendationCandidates(earbuds, [robotVacuum, robotVacuum]), [earbuds, robotVacuum]);
+});
+
+test('merchant-supported same-category alternatives are shown even if the model omits optional indexes', () => {
+  const science = { id: 'science', siteId: 'store', name: 'Science Kit', category: 'toys', merchantRelevance: 305, rating: 3.7, currency: 'XLM', price: 35 };
+  const blocks = { id: 'blocks', siteId: 'store', name: 'Building Blocks', category: 'toys', merchantRelevance: 245, rating: 3.8, currency: 'XLM', price: 40 };
+  const teddy = { id: 'teddy', siteId: 'store', name: 'Teddy Bear', category: 'toys', merchantRelevance: 245, rating: 4, currency: 'XLM', price: 30 };
+  const serum = { id: 'serum', siteId: 'store', name: 'Face Serum', category: 'beauty', merchantRelevance: 999, rating: 4.8, currency: 'XLM', price: 30 };
+  assert.deepEqual(supportedAlternatives(science, [], [science, blocks, teddy, serum], { currency: 'XLM', maxPrice: 100 }).map((item) => item.name), ['Teddy Bear', 'Building Blocks']);
+});
+
+test('short follow-up turns preserve an active shopping goal', () => {
+  const task = { goal: { product: 'gift for kids' } };
+  assert.equal(isScopedContinuationTurn('show some more gifts', task), true);
+  assert.equal(isScopedContinuationTurn('any other audio product?', task), true);
+  assert.equal(isScopedContinuationTurn('checkout my cart', task), false);
+  assert.equal(isScopedContinuationTurn('show some more gifts', null), false);
+});
+
 test('cross-currency caps do not turn a semantic wireless-audio match into a no-match', () => {
   const headphones = { id: 'sony-xm5', name: 'Sony WH-1000XM5 Wireless Headphones', currency: 'USD', price: 348, semanticScore: 0.72 };
   const chosen = chooseRankedProduct({ bestIndex: null, nearestIndex: 0, matchQuality: 0.82 }, [headphones], {
@@ -112,6 +198,42 @@ test('a weak, unsupported semantic candidate is not promoted solely because curr
     rawQuery: 'wireless audio under 300 XLM', product: 'wireless audio', maxPrice: 300, currency: 'XLM',
   });
   assert.equal(chosen.bestMatch, null);
+});
+
+test('supported merchant semantic retrieval remains safe when the ranker is temporarily unavailable', () => {
+  const earbuds = { id: 'earbuds', name: 'Bose QuietComfort Earbuds II', currency: 'XLM', price: 249, merchantRelevance: 0.91, rating: 3.5 };
+  const vacuum = { id: 'vacuum', name: 'Robot Vacuum Cleaner', currency: 'XLM', price: 299, merchantRelevance: 0.11, rating: 4.4 };
+  const ranked = fallbackSemanticRank([earbuds, vacuum], {
+    rawQuery: 'wireless audio under 300 XLM', product: 'wireless audio', maxPrice: 300, currency: 'XLM',
+  });
+  assert.equal(ranked.bestMatch, earbuds);
+  assert.deepEqual(ranked.alternatives, []);
+  assert.match(ranked.reasoning, /live semantic match/i);
+});
+
+test('semantic fallback still enforces a comparable XLM cap', () => {
+  const overBudget = { id: 'headphones', name: 'Wireless Headphones', currency: 'XLM', price: 301, merchantRelevance: 0.99 };
+  assert.equal(fallbackSemanticRank([overBudget], {
+    product: 'wireless audio', maxPrice: 300, currency: 'XLM',
+  }), null);
+});
+
+test('durable conversation memory preserves shopping context without sending an unbounded transcript', () => {
+  const messages = Array.from({ length: 22 }, (_, index) => ({
+    role: index % 2 ? 'agent' : 'user',
+    content: index === 0 ? 'I need a gift for a child under 100 XLM' : `turn ${index}`,
+  }));
+  const memory = buildConversationMemory({
+    messages,
+    shoppingTask: { goal: { rawQuery: 'gift for a child under 100 XLM', product: 'child gift' } },
+    preferences: { likes: ['educational toys'], avoids: ['plastic waste'] },
+  });
+  assert.match(memory.summary, /Active shopping goal: gift for a child under 100 XLM/i);
+  assert.match(memory.summary, /educational toys/i);
+  assert.match(memory.summary, /I need a gift for a child under 100 XLM/i);
+  const context = boundedConversation(messages, memory, 16);
+  assert.equal(context.recentMessages.length, 16);
+  assert.match(context.durableMemory, /Earlier user context/i);
 });
 
 test('active product cards resolve exact names and generated checkout references', () => {

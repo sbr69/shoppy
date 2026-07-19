@@ -2,14 +2,34 @@ import { createHash } from 'crypto';
 import getDb from '../db/database.js';
 import { embedText } from './llm.service.js';
 
+const catalogValueText = (value) => {
+  if (typeof value === 'string' || typeof value === 'number') return String(value).trim().slice(0, 500);
+  if (!value || typeof value !== 'object') return '';
+  const key = String(value.key ?? value.name ?? value.label ?? '').trim().slice(0, 180);
+  const rawValue = value.value ?? value.values ?? value.text;
+  const renderedValue = Array.isArray(rawValue)
+    ? rawValue.map(catalogValueText).filter(Boolean).join(', ')
+    : catalogValueText(rawValue);
+  return key && renderedValue ? `${key}: ${renderedValue}` : key || renderedValue;
+};
+
+const catalogValues = (value) => (Array.isArray(value) ? value : [value])
+  .map(catalogValueText)
+  .filter(Boolean);
+
 const productText = (product) => [
-  product.name,
-  product.brand,
-  product.category,
-  product.description,
-  ...(Array.isArray(product.tags) ? product.tags : []),
-  ...(Array.isArray(product.attributes) ? product.attributes : []),
-].filter(Boolean).map(String).join(' | ').slice(0, 7000);
+  ...catalogValues(product.name),
+  ...catalogValues(product.brand),
+  ...catalogValues(product.category),
+  ...catalogValues(product.categoryName),
+  ...catalogValues(product.productType),
+  ...catalogValues(product.taxonomyPath ?? product.taxonomy_path),
+  ...catalogValues(product.seller),
+  ...catalogValues(product.description),
+  ...catalogValues(product.tags),
+  ...catalogValues(product.attributes),
+  ...catalogValues(product.searchAliases ?? product.search_aliases),
+].join(' | ').slice(0, 7000);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const dot = (a, b) => a.length === b.length ? a.reduce((total, value, index) => total + value * b[index], 0) : -1;
 

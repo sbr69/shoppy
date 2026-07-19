@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import getDb from '../db/database.js';
-import { parseIntent, retrievalQueries } from './intent.service.js';
+import { expandRetrievalQueries, literalCatalogQueries, parseIntent } from './intent.service.js';
 import { rankProducts } from './product.service.js';
 import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
 import { executeCustodialPayment } from './payment.service.js';
@@ -12,6 +12,7 @@ import { cacheAuthorizedProducts, retrieveSemanticCandidates } from './catalog.s
 import { getShoppingPreferences, saveShoppingPreferences } from './shopping-preference.service.js';
 import { generateText, parseJsonResponse } from './llm.service.js';
 import { getShoppingTask, markShoppingTask, saveShoppingTask, taskGoalToIntent, taskSeenProductKeys } from './shopping-task.service.js';
+import { boundedConversation, getConversationMemory, saveConversationMemory } from './conversation-memory.service.js';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
 const normalizedCurrency = (value) => String(value || '').trim().toUpperCase();
@@ -19,6 +20,8 @@ const isCatalogCurrencyBudget = (intent, product) => Boolean(intent.maxPrice && 
 const liveSearchFilters = (intent) => normalizedCurrency(intent.currency) === 'XLM'
   ? { maxPrice: null, minPrice: null }
   : { maxPrice: intent.maxPrice, minPrice: intent.minPrice };
+const CATALOG_PAGE_SIZE = 48;
+const MAX_CATALOG_PAGES = 8;
 
 const readableCategory = (value) => String(value || '')
   .replace(/[-_]+/g, ' ')
@@ -27,6 +30,86 @@ const readableCategory = (value) => String(value || '')
 
 const normalizedText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const purchaseIntentIdPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
+
+/**
+ * Conversation control is deterministic at the boundary: short references to
+ * “more” or “another” must retain the active shopping goal even when a model
+ * incorrectly turns them into a brand-new search. Product meaning itself is
+ * still interpreted semantically by the planner and merchant index.
+ */
+export function isScopedContinuationTurn(message, shoppingTask) {
+  if (!shoppingTask?.goal?.product) return false;
+  const text = normalizedText(message);
+  if (!text || /\b(add|cart|checkout|buy it|pay now|cancel)\b/.test(text)) return false;
+  return /\b(more|another|other|different|similar|else)\b/.test(text)
+    || /^(i asked for|thats not what i asked|that is not what i asked)\b/.test(text);
+}
+
+/**
+ * Browse a bounded, authoritative merchant catalogue instead of treating one
+ * keyword-search response as the whole store. Merchants that do not yet
+ * support offsets safely return their first page again; the repeated IDs stop
+ * the loop immediately rather than producing duplicate requests forever.
+ */
+export async function browseMerchantCatalog(adapter, filters = {}, { pageSize = CATALOG_PAGE_SIZE, maxPages = MAX_CATALOG_PAGES } = {}) {
+  const products = [];
+  const seen = new Set();
+  for (let page = 0; page < maxPages; page += 1) {
+    const current = await adapter.searchProducts('', { ...filters, limit: pageSize, offset: page * pageSize });
+    if (!current.length) break;
+    let added = 0;
+    for (const product of current) {
+      const key = String(product.id || '');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      products.push(product);
+      added += 1;
+    }
+    if (current.length < pageSize || added === 0) break;
+  }
+  return products;
+}
+
+const finiteMerchantRelevance = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const meaningfulCatalogValue = (value) => value !== null && value !== undefined
+  && !(typeof value === 'string' && !value.trim())
+  && !(Array.isArray(value) && value.length === 0);
+
+/**
+ * Search and browse responses can contain the same product. Preserve the
+ * richest non-empty metadata and the strongest merchant retrieval signal,
+ * rather than letting a later unscored browse response erase it.
+ */
+export function mergeCatalogProducts(products = []) {
+  const merged = new Map();
+  for (const product of products) {
+    const key = `${product?.siteId || ''}:${product?.id || ''}`;
+    if (!product?.siteId || !product?.id) continue;
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, product);
+      continue;
+    }
+    const currentRelevance = finiteMerchantRelevance(current.merchantRelevance);
+    const incomingRelevance = finiteMerchantRelevance(product.merchantRelevance);
+    const preferIncoming = incomingRelevance !== null && (currentRelevance === null || incomingRelevance > currentRelevance);
+    const preferred = preferIncoming ? product : current;
+    const fallback = preferIncoming ? current : product;
+    const combined = { ...fallback };
+    for (const [field, value] of Object.entries(preferred)) {
+      if (meaningfulCatalogValue(value) || !(field in combined)) combined[field] = value;
+    }
+    const highestRelevance = [currentRelevance, incomingRelevance].filter((value) => value !== null);
+    combined.merchantRelevance = highestRelevance.length ? Math.max(...highestRelevance) : null;
+    merged.set(key, combined);
+  }
+  return [...merged.values()];
+}
+
+/** A browse fallback is warranted when merchant search did not return a real semantic signal. */
+export function shouldBrowseCatalogFallback(products = []) {
+  return !products.some((product) => finiteMerchantRelevance(product?.merchantRelevance) >= 0.38);
+}
 
 /** Resolve an exact active card reference without relying on LLM wording. */
 export function resolveActiveProductReference(message, shownProducts = []) {
@@ -88,6 +171,51 @@ export function noCredibleMatchMessage(intent, products, nearestMatch = null) {
   return `**No reliable match**\n\nI could not find a credible live match for “${intent.rawQuery}”.${relatedText}${categoryText}\n\nTry a different category or connect a store that carries this item.`;
 }
 
+/** Only show alternatives explicitly judged relevant by the ranking layer. */
+export function recommendationCandidates(bestMatch, alternatives = []) {
+  return [bestMatch, ...(Array.isArray(alternatives) ? alternatives : [])]
+    .filter(Boolean)
+    .filter((candidate, index, all) => all.findIndex((item) => item.siteId === candidate.siteId && item.id === candidate.id) === index)
+    .slice(0, 3);
+}
+
+const sameCatalogCategory = (left, right) => normalizedText(left?.category || left?.categoryName)
+  && normalizedText(left?.category || left?.categoryName) === normalizedText(right?.category || right?.categoryName);
+const merchantSemanticEvidence = (product) => Number.isFinite(Number(product?.merchantRelevance)) && Number(product.merchantRelevance) > 0;
+
+/**
+ * The model explains the best result, but its optional alternative indexes are
+ * not reliable enough to decide whether valid merchant results are shown. Fill
+ * the remaining two cards only with same-category, merchant-supported items.
+ */
+export function supportedAlternatives(bestMatch, modelAlternatives = [], products = [], intent = {}) {
+  const fromModel = Array.isArray(modelAlternatives) ? modelAlternatives : [];
+  const supplemental = products
+    .filter((candidate) => candidate && candidate.id !== bestMatch?.id)
+    .filter((candidate) => candidate.siteId !== bestMatch?.siteId || candidate.id !== bestMatch?.id)
+    .filter((candidate) => sameCatalogCategory(bestMatch, candidate))
+    .filter((candidate) => merchantSemanticEvidence(candidate) || Number(candidate.semanticScore) >= 0.38)
+    .filter((candidate) => !isCatalogCurrencyBudget(intent, candidate) || Number(candidate.price) <= Number(intent.maxPrice))
+    .sort((left, right) => Number(right.merchantRelevance || 0) - Number(left.merchantRelevance || 0)
+      || Number(right.semanticScore || 0) - Number(left.semanticScore || 0)
+      || Number(right.rating || 0) - Number(left.rating || 0));
+  return recommendationCandidates(bestMatch, [...fromModel, ...supplemental]).slice(1, 3);
+}
+
+export function closestOverBudgetAlternative(products = [], seenProducts = [], intent = {}) {
+  if (!intent?.maxPrice || !normalizedCurrency(intent.currency)) return null;
+  const reference = seenProducts[0] || null;
+  if (!reference) return null;
+  const seen = new Set(seenProducts.map((product) => `${product.siteId}:${product.id}`));
+  return products
+    .filter((candidate) => candidate?.inStock && !seen.has(`${candidate.siteId}:${candidate.id}`))
+    .filter((candidate) => sameCatalogCategory(reference, candidate))
+    .filter((candidate) => isCatalogCurrencyBudget(intent, candidate) && Number(candidate.price) > Number(intent.maxPrice))
+    .filter((candidate) => merchantSemanticEvidence(candidate) || Number(candidate.semanticScore) >= 0.38)
+    .sort((left, right) => Number(left.price) - Number(right.price)
+      || Number(right.merchantRelevance || 0) - Number(left.merchantRelevance || 0))[0] || null;
+}
+
 const questionProduct = (row) => ({ ...row.product_json, purchaseIntentId: row.id, siteId: row.site_id });
 const numberOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const ratingText = (product) => {
@@ -99,7 +227,7 @@ const ratingText = (product) => {
 
 async function selectedQuestionProducts(userId, sessionId) {
   const db = getDb();
-  const rows = await db`select id, site_id, product_json from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') order by updated_at desc limit 3`;
+  const rows = await db`select id, site_id, product_json from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('suggested', 'selected', 'confirmed') order by updated_at desc limit 12`;
   return rows.map(questionProduct);
 }
 
@@ -182,7 +310,15 @@ Reviews: ${JSON.stringify(reviews.map((review) => ({ rating: review.rating, titl
   }
 }
 
-async function handleQuestion(userId, sessionId, intent) {
+function completedPurchaseMessage(purchase) {
+  if (!purchase?.product_json?.name) return '**No completed purchase found**\n\nThere is no settled order in this chat to review.';
+  const amount = Number(purchase.price_xlm);
+  const amountText = Number.isFinite(amount) && amount > 0 ? ` for **${amount.toFixed(7)} XLM**` : '';
+  return `**Completed order**\n\nThe settled order contains **${purchase.quantity} × ${purchase.product_json.name}**${amountText}. A Stellar payment cannot be cancelled or changed after finalization.\n\nIf you still want more, I can add the additional quantity to your cart and verify a new merchant total before any further payment.`;
+}
+
+async function handleQuestion(userId, sessionId, intent, lastCompletedPurchase = null) {
+  if (intent.questionType === 'purchase_status') return { type: 'text', content: completedPurchaseMessage(lastCompletedPurchase) };
   const selected = await selectedQuestionProducts(userId, sessionId);
   if (intent.questionType === 'compare_ratings') {
     const rated = selected.filter((product) => numberOrNull(product.rating) !== null);
@@ -213,12 +349,18 @@ async function handleQuestion(userId, sessionId, intent) {
 
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
-  const [pendingRows, recentMessages, userPreferences, shoppingTask] = await Promise.all([
-    db`select id, state, product_json, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') order by updated_at desc limit 3`,
+  const [pendingRows, completedPurchaseRows, sessionMessages, userPreferences, shoppingTask, conversationMemory] = await Promise.all([
+    db`select id, state, product_json, quantity, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('suggested', 'selected', 'confirmed') order by updated_at desc limit 24`,
+    db`select id, state, product_json, quantity, merchant_order_id, price_xlm, updated_at from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('payment_submitted', 'payment_confirmed', 'order_confirmed') order by updated_at desc limit 1`,
     db`select role, content, metadata from messages where session_id = ${sessionId} order by created_at asc`,
     getShoppingPreferences(userId),
     getShoppingTask(userId, sessionId),
+    getConversationMemory(userId, sessionId).catch((error) => {
+      console.warn('Conversation memory read skipped:', error.message);
+      return null;
+    }),
   ]);
+  const lastCompletedPurchase = completedPurchaseRows[0] || null;
   const [pendingBatch] = await db`
     select b.*, count(i.id)::int as item_count from purchase_batches b
     left join purchase_intents i on i.batch_id = b.id
@@ -226,38 +368,53 @@ export async function processMessage(userId, sessionId, message, googleSub) {
     group by b.id order by b.updated_at desc limit 1`;
   await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
   await db`update chat_sessions set title = case when title = 'New shopping chat' then left(${message}, 72) else title end, updated_at = now() where id = ${sessionId}`;
-  const pending = pendingRows[0];
+  const pending = pendingRows.find((row) => row.state === 'confirmed') || null;
+  const cartItems = pendingRows.filter((row) => row.state === 'selected' && !row.batch_id);
   const shownProducts = pendingRows.map((row) => ({
     purchaseIntentId: row.id,
+    state: row.state,
+    quantity: row.quantity,
     name: row.product_json?.name,
     brand: row.product_json?.brand,
     category: row.product_json?.category,
     rating: row.product_json?.rating,
     reviewCount: row.product_json?.reviewCount,
   }));
+  const conversation = boundedConversation(sessionMessages, conversationMemory);
   let intent = await parseIntent(message, {
-    pendingPurchase: pending ? {
+    pendingPurchase: !pendingBatch && pending ? {
       state: pending.state,
       productName: pending.product_json?.name,
       merchantOrderId: pending.merchant_order_id,
       finalAmountXlm: pending.price_xlm,
     } : null,
-    recentMessages,
+    recentMessages: conversation.recentMessages,
+    durableMemory: conversation.durableMemory,
     userPreferences,
     shownProducts,
-    continuationOffer: lastContinuationOffer(recentMessages),
+    cartItems,
+    lastCompletedPurchase,
+    continuationOffer: lastContinuationOffer(sessionMessages),
     shoppingTask,
     pendingBatch: pendingBatch ? { id: pendingBatch.id, state: pendingBatch.state, itemCount: pendingBatch.item_count, totalXlm: pendingBatch.total_xlm } : null,
   });
+  if (intent.action === 'search' && isScopedContinuationTurn(message, shoppingTask)) {
+    intent = { ...intent, action: 'browse_alternatives' };
+  }
   // Product cards and their generated commands are structured UI references.
   // Resolve them locally so a model can never turn “buy Remote Control Car”
   // into an unrelated fresh search or lose an exact selected card.
   const referencedIntentIds = resolveActiveProductReferences(message, shownProducts);
   const referencedIntentId = referencedIntentIds[0] || resolveActiveProductReference(message, shownProducts);
   if (referencedIntentIds.length >= 2 && intent.action !== 'question' && intent.action !== 'cancel') {
-    intent = { ...intent, action: 'confirm_batch', purchaseIntentIds: referencedIntentIds };
+    intent = { ...intent, action: 'add_to_cart', purchaseIntentIds: referencedIntentIds };
   } else if (referencedIntentId && intent.action !== 'question' && intent.action !== 'cancel') {
-    intent = { ...intent, action: 'confirm_purchase', purchaseIntentId: referencedIntentId };
+    intent = { ...intent, action: 'add_to_cart', purchaseIntentId: referencedIntentId };
+  }
+  // A settled Stellar payment cannot be cancelled. Keep it in context and
+  // answer corrections truthfully instead of emitting a false cancellation.
+  if (intent.action === 'cancel' && !pendingRows.some((row) => ['selected', 'confirmed'].includes(row.state)) && lastCompletedPurchase) {
+    intent = { ...intent, action: 'question', questionType: 'purchase_status' };
   }
   let response;
   if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
@@ -268,6 +425,8 @@ export async function processMessage(userId, sessionId, message, googleSub) {
       : { type: 'text', content: '**No active search to continue**\n\nTell me what you would like to find.' };
   }
   else if (intent.action === 'show_offer') response = await handleContinuationOffer(userId, sessionId, intent);
+  else if (intent.action === 'add_to_cart') response = await handleAddToCart(userId, sessionId, intent.purchaseIntentIds?.length ? intent.purchaseIntentIds : [intent.purchaseIntentId], intent.quantity);
+  else if (intent.action === 'checkout_cart') response = await handleCartCheckout(userId, sessionId, googleSub);
   else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
   else if (intent.action === 'confirm_batch') response = await handleBatchConfirmation(userId, sessionId, googleSub, intent.purchaseIntentIds?.length ? intent.purchaseIntentIds : null, pendingBatch?.id || null);
   else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
@@ -275,23 +434,37 @@ export async function processMessage(userId, sessionId, message, googleSub) {
     const preferences = await saveShoppingPreferences(userId, intent.preferenceUpdate);
     response = { type: 'text', content: `**Preference saved**\n\n${[...preferences.likes, ...preferences.avoids.map((value) => `avoid ${value}`), ...preferences.useCases].join(', ') || 'No specific preference was provided.'}` };
   }
-  else if (intent.action === 'question') response = await handleQuestion(userId, sessionId, intent);
+  else if (intent.action === 'question') response = await handleQuestion(userId, sessionId, intent, lastCompletedPurchase);
   else if (intent.action === 'greeting') response = { type: 'text', content: '**How can I help?**\n\nTell me what you want to buy, compare, or review.' };
   else response = { type: 'text', content: `**I need one detail**\n\n${intent.clarification || 'Tell me what you want to find, or ask about an item already shown.'}` };
   const [saved] = await db`insert into messages (session_id, role, content, metadata) values (${sessionId}, 'agent', ${response.content}, ${response.metadata ? db.json(response.metadata) : null}) returning id`;
+  try {
+    await saveConversationMemory(userId, sessionId, {
+      messages: [
+        ...sessionMessages,
+        { role: 'user', content: message },
+        { role: 'agent', content: response.content, metadata: response.metadata || null },
+      ],
+      shoppingTask: await getShoppingTask(userId, sessionId),
+      preferences: userPreferences,
+    });
+  } catch (error) {
+    // Context memory may be introduced before its migration is applied. It is
+    // an enhancement only; a missing memory table must never block shopping.
+    console.warn('Conversation memory update skipped:', error.message);
+  }
   await db`update chat_sessions set updated_at = now() where id = ${sessionId}`;
   return { id: saved.id, ...response };
 }
 
 async function handleSearch(userId, sessionId, intent, { shoppingTask = null, alternativesOnly = false } = {}) {
   const db = getDb();
-  // A fresh discovery replaces unresolved suggestions from this chat. This
-  // keeps a plain “buy it” from ever becoming ambiguous across old results.
+  // A fresh discovery only clears unchosen recommendations. Cart items and
+  // verified checkouts belong to the user and must never vanish because they
+  // searched for one more thing.
   if (!alternativesOnly) {
     await db`update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now()
-      where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
-    await db`update purchase_batches set state = 'cancelled', updated_at = now()
-      where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
+      where user_id = ${userId} and session_id = ${sessionId} and state = 'suggested'`;
   }
   await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'running', detail: 'Searching authorized stores.' });
   const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
@@ -299,28 +472,39 @@ async function handleSearch(userId, sessionId, intent, { shoppingTask = null, al
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No authorized stores are active.' });
     return { type: 'text', content: '**Connect a store first**\n\nConnect a store from the right-hand panel and complete its sign-in. Then I can search its live catalog.' };
   }
-  const queries = retrievalQueries(intent);
+  // Prefer the merchant's own semantic/search index. A broad catalogue walk is
+  // an expensive recall fallback, not a parallel source of loosely related
+  // products that can dilute a specific request.
+  const queries = literalCatalogQueries(await expandRetrievalQueries(intent), 8);
   if (!queries.length) return { type: 'text', content: 'Tell me a little more about the product you want me to find.' };
   // Cached semantic candidates and live merchant searches run together. The
   // merchant response remains authoritative for stock and checkout.
   const semanticCandidates = retrieveSemanticCandidates(sites.map((site) => site.id), intent).catch(() => []);
   const catalogFilters = liveSearchFilters(intent);
-  const results = await Promise.allSettled([
+  let results = await Promise.allSettled([
     ...sites.flatMap((site) => queries.map(async (query) =>
       (await new EcommerceAdapter(site).searchProducts(query, catalogFilters))
         .map((product) => ({ ...product, siteId: site.id, retrievalQuery: query })),
     )),
-    // A bounded browse verifies the current merchant catalogue. Cached vectors
-    // can improve recall, but never make a stale product purchasable.
-    ...sites.map(async (site) =>
-      (await new EcommerceAdapter(site).searchProducts('', catalogFilters))
-        .map((product) => ({ ...product, siteId: site.id, retrievalQuery: 'catalog browse' })),
-    ),
   ]);
-  let products = [...new Map(results
+  let products = mergeCatalogProducts(results
     .filter((result) => result.status === 'fulfilled')
     .flatMap((result) => result.value)
-    .map((product) => [`${product.siteId}:${product.id}`, product])).values()];
+  );
+  // Some merchants only expose a basic literal search endpoint. If every
+  // planned semantic query comes back empty, scan their bounded catalogue once
+  // so cached embeddings can recover a real match. Do not do this on every
+  // message: it hurts latency and can surface unrelated products.
+  if (shouldBrowseCatalogFallback(products)) {
+    const browseResults = await Promise.allSettled(sites.map(async (site) =>
+      (await browseMerchantCatalog(new EcommerceAdapter(site), catalogFilters))
+        .map((product) => ({ ...product, siteId: site.id, retrievalQuery: 'catalog browse' })),
+    ));
+    results = [...results, ...browseResults];
+    products = mergeCatalogProducts(results
+      .filter((result) => result.status === 'fulfilled')
+      .flatMap((result) => result.value));
+  }
   try { await Promise.all(sites.map((site) => cacheAuthorizedProducts(site.id, products.filter((product) => product.siteId === site.id)))); } catch (error) { console.warn('Catalog cache update skipped:', error.message); }
   let cachedProducts = await semanticCandidates;
   // On a first search the cache was empty at the start. Re-read it after the
@@ -328,13 +512,26 @@ async function handleSearch(userId, sessionId, intent, { shoppingTask = null, al
   // immediately rather than only on the user's next message.
   if (!cachedProducts.length && products.length) cachedProducts = await retrieveSemanticCandidates(sites.map((site) => site.id), intent).catch(() => []);
   const semanticByProduct = new Map(cachedProducts.map((product) => [`${product.siteId}:${product.id}`, product.semanticScore]));
+  const priorSeen = alternativesOnly && Array.isArray(shoppingTask?.context?.seenProducts) ? shoppingTask.context.seenProducts : [];
   const previouslyShown = alternativesOnly ? taskSeenProductKeys(shoppingTask) : new Set();
+  const liveProducts = products.map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
   products = products
     .filter((product) => product.inStock
       && !previouslyShown.has(`${product.siteId}:${product.id}`)
       && (!isCatalogCurrencyBudget(intent, product) || Number(product.price) <= intent.maxPrice)
       && (!intent.minPrice || !isCatalogCurrencyBudget(intent, product) || Number(product.price) >= intent.minPrice))
     .map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
+  // A just-fetched task context is an authorized merchant result set. If a
+  // follow-up query happens to return only already-shown items, reuse the
+  // remaining fresh candidates rather than falsely claiming there are none.
+  if (!products.length && alternativesOnly) {
+    const taskCandidates = Array.isArray(shoppingTask?.context?.candidates) ? shoppingTask.context.candidates : [];
+    products = taskCandidates
+      .filter((product) => product?.id && product?.siteId && product.inStock !== false)
+      .filter((product) => !previouslyShown.has(`${product.siteId}:${product.id}`))
+      .filter((product) => !isCatalogCurrencyBudget(intent, product) || Number(product.price) <= Number(intent.maxPrice))
+      .map((product) => ({ ...product, merchantRelevance: Number(product.merchantRelevance) || 1 }));
+  }
   if (!products.length) {
     const merchantFailures = results
       .filter((result) => result.status === 'rejected')
@@ -345,7 +542,12 @@ async function handleSearch(userId, sessionId, intent, { shoppingTask = null, al
       return { type: 'text', content: '**Store connection needs renewal**\n\nI could not refresh this store’s authorization, so I did not treat the catalog as empty. Reconnect the store to restore secure search and checkout access. No funds moved.' };
     }
     if (alternativesOnly) {
-      const shown = Array.isArray(shoppingTask?.context?.seenProducts) ? shoppingTask.context.seenProducts : [];
+      const shown = priorSeen;
+      const overBudget = closestOverBudgetAlternative(liveProducts, shown, intent);
+      if (overBudget) {
+        const difference = Number(overBudget.price) - Number(intent.maxPrice);
+        return { type: 'text', content: `**Another related option is above your budget**\n\n**${overBudget.name}** is available at **${Number(overBudget.price).toFixed(7)} XLM**, which is **${difference.toFixed(7)} XLM** above your ${Number(intent.maxPrice).toFixed(7)} XLM limit. I kept your budget instead of adding it. Say “show it anyway” if you want to review it.` };
+      }
       const current = shown[0]?.name ? ` **${shown[0].name}** remains the only live related listing I found.` : '';
       await saveShoppingTask(userId, sessionId, { goal: intent, context: { candidates: [], seenProducts: shown, lastAction: 'alternatives_exhausted' } });
       return { type: 'text', content: `**No other matching option**\n\nI checked the live catalog again for alternatives to your current request.${current} I have not changed your selection or prepared a checkout.` };
@@ -378,21 +580,19 @@ async function handleSearch(userId, sessionId, intent, { shoppingTask = null, al
   }
   const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
   const requestedBudget = intent.maxPrice ? { amount: intent.maxPrice, currency: normalizedCurrency(intent.currency) || null } : null;
-  const fallbackAlternatives = products
-    .filter((candidate) => candidate.siteId !== bestMatch.siteId || candidate.id !== bestMatch.id)
-    .sort((a, b) => (Number(b.semanticScore) || Number(b.rating) || 0) - (Number(a.semanticScore) || Number(a.rating) || 0))
-    .slice(0, 2);
-  const selectedCandidates = [bestMatch, ...(alternatives.length ? alternatives : fallbackAlternatives)]
-    .filter((candidate, index, all) => all.findIndex((item) => item.siteId === candidate.siteId && item.id === candidate.id) === index).slice(0, 3);
+  // A missing model alternative is not permission to fill the UI with the
+  // next high-rated catalogue items. Every displayed card must be a semantic
+  // recommendation, so showing one sound match is safer than two unrelated
+  // products.
+  const selectedCandidates = recommendationCandidates(bestMatch, supportedAlternatives(bestMatch, alternatives, products, intent));
   const createdIntents = await Promise.all(selectedCandidates.map(async (candidate) => {
     const candidateSite = sites.find((item) => item.id === candidate.siteId);
     const [created] = await db`
       insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
-      values (${userId}, ${sessionId}, ${candidateSite.id}, ${db.json({ ...candidate, agentRequest: { requestedBudget } })}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
+      values (${userId}, ${sessionId}, ${candidateSite.id}, ${db.json({ ...candidate, agentRequest: { requestedBudget } })}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'suggested', ${uuidv4()}, ${expiry}) returning *`;
     return { product: candidate, purchaseIntentId: created.id };
   }));
   const primarySelection = createdIntents[0];
-  const priorSeen = alternativesOnly && Array.isArray(shoppingTask?.context?.seenProducts) ? shoppingTask.context.seenProducts : [];
   const seenProducts = [...priorSeen, ...selectedCandidates]
     .filter((product, index, all) => all.findIndex((item) => item.siteId === product.siteId && item.id === product.id) === index)
     .slice(-24);
@@ -400,7 +600,7 @@ async function handleSearch(userId, sessionId, intent, { shoppingTask = null, al
   await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: primarySelection.purchaseIntentId, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), queries } });
   const alternativeNote = createdIntents.length > 1 ? ` I found ${createdIntents.length - 1} additional option${createdIntents.length === 2 ? '' : 's'} below so you can choose the one you prefer.` : '';
   const budgetNote = normalizedCurrency(intent.currency) === 'XLM' && requestedBudget ? ` Your ${requestedBudget.amount} XLM budget will be checked against the merchant’s final XLM checkout total before payment.` : '';
-  return { type: 'product_suggestion', content: `**Recommended: ${bestMatch.name}**\n\n${reasoning}${alternativeNote}${budgetNote}\n\nSelect a product card to verify its checkout.`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
+  return { type: 'product_suggestion', content: `**Recommended: ${bestMatch.name}**\n\n${reasoning}${alternativeNote}${budgetNote}\n\nAdd a product to your cart when you are ready. I will verify merchant totals only when you checkout.`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 
 /** Display a previously mentioned near-match only after the user explicitly asks for it. */
@@ -418,7 +618,7 @@ async function handleContinuationOffer(userId, sessionId, intent) {
     const requestedBudget = offer.requestedBudget || null;
     const [created] = await db`
       insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
-      values (${userId}, ${sessionId}, ${site.id}, ${db.json({ ...product, siteId: site.id, agentRequest: { requestedBudget } })}, ${offer.quantity || 1}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
+      values (${userId}, ${sessionId}, ${site.id}, ${db.json({ ...product, siteId: site.id, agentRequest: { requestedBudget } })}, ${offer.quantity || 1}, 'suggested', ${uuidv4()}, ${expiry}) returning *`;
     const previousSeen = Array.isArray(intent.shoppingTask?.context?.seenProducts) ? intent.shoppingTask.context.seenProducts : [];
     await saveShoppingTask(userId, sessionId, {
       goal: taskGoalToIntent(intent.shoppingTask) || {
@@ -433,7 +633,7 @@ async function handleContinuationOffer(userId, sessionId, intent) {
     });
     return {
       type: 'product_suggestion',
-      content: `**Closest available match: ${product.name}**\n\nThis is the related listing you asked to see. It may not meet every part of your original request, so review it before checkout.\n\nSelect the card or say “buy ${product.name}” to verify the merchant total.`,
+      content: `**Closest available match: ${product.name}**\n\nThis is the related listing you asked to see. It may not meet every part of your original request, so review it before adding it to your cart.`,
       metadata: { product: { ...product, siteId: site.id }, alternatives: [], reasoning: 'Closest related listing from your authorized store.', purchaseIntentId: created.id, quantity: offer.quantity || 1, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } },
     };
   } catch (error) {
@@ -447,6 +647,52 @@ async function findIntent(userId, sessionId, requestedId) {
   if (requestedId) { const [intent] = await db`select * from purchase_intents where id = ${requestedId} and user_id = ${userId} and session_id = ${sessionId}`; return intent; }
   const intents = await db`select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected','confirmed') order by updated_at desc limit 2`;
   return intents.length === 1 ? intents[0] : null;
+}
+
+const cartLine = (item) => `- ${item.product_json.name} × ${item.quantity}`;
+
+/** Move an explicit recommendation into the user's cart. This path cannot pay or checkout. */
+async function handleAddToCart(userId, sessionId, requestedIds, requestedQuantity) {
+  const ids = [...new Set((Array.isArray(requestedIds) ? requestedIds : []).filter((id) => typeof id === 'string'))].slice(0, 20);
+  if (!ids.length) return { type: 'text', content: '**Choose a product first**\n\nAdd one of the product cards I showed to your cart.' };
+  const quantity = Math.min(Math.max(Number(requestedQuantity) || 1, 1), 100);
+  const db = getDb();
+  const cartItems = await db.begin(async (tx) => {
+    const items = await tx`select * from purchase_intents where id in ${tx(ids)} and user_id = ${userId} and session_id = ${sessionId} and state in ('suggested', 'selected') and batch_id is null for update`;
+    if (items.length !== ids.length) return null;
+    for (const item of items) {
+      const productId = String(item.product_json?.id || '');
+      const [existing] = productId ? await tx`
+        select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId}
+          and state = 'selected' and batch_id is null and site_id = ${item.site_id}
+          and product_json->>'id' = ${productId} and id <> ${item.id} limit 1 for update` : [];
+      if (existing) {
+        const nextQuantity = ids.length === 1 ? quantity : Math.min(existing.quantity + item.quantity, 100);
+        await tx`update purchase_intents set quantity = ${nextQuantity}, expires_at = ${new Date(Date.now() + 60 * 60 * 1000).toISOString()}, updated_at = now() where id = ${existing.id}`;
+        if (item.state === 'suggested') await tx`update purchase_intents set state = 'cancelled', updated_at = now() where id = ${item.id}`;
+      } else {
+        const nextQuantity = ids.length === 1 ? quantity : item.quantity;
+        await tx`update purchase_intents set state = 'selected', quantity = ${nextQuantity}, expires_at = ${new Date(Date.now() + 60 * 60 * 1000).toISOString()}, updated_at = now() where id = ${item.id}`;
+      }
+    }
+    return tx`select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state = 'selected' and batch_id is null order by updated_at asc limit 20`;
+  });
+  if (!cartItems) return { type: 'text', content: '**That recommendation is no longer active**\n\nSearch again to receive current product options.' };
+  const added = ids.length === 1 ? `${quantity} × item` : `${ids.length} items`;
+  return {
+    type: 'text',
+    content: `**Added to cart**\n\n${added} added.\n\n**Your cart**\n${cartItems.map(cartLine).join('\n')}\n\nAdd anything else, or say **checkout** when you want me to verify the final merchant totals. No funds have moved.`,
+    metadata: { cart: cartItems.map((item) => ({ purchaseIntentId: item.id, product: item.product_json, quantity: item.quantity })) },
+  };
+}
+
+/** Verify a cart only after the user explicitly asks to checkout. */
+async function handleCartCheckout(userId, sessionId, googleSub) {
+  const db = getDb();
+  const items = await db`select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state = 'selected' and batch_id is null order by updated_at asc limit 20`;
+  if (!items.length) return { type: 'text', content: '**Your cart is empty**\n\nAdd one or more product cards first.' };
+  if (items.length === 1) return handleConfirmation(userId, sessionId, googleSub, items[0].id);
+  return handleBatchConfirmation(userId, sessionId, googleSub, items.map((item) => item.id), null);
 }
 
 export function paymentFailureDetail(error) {
@@ -473,6 +719,7 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   const db = getDb();
   const purchaseIntent = await findIntent(userId, sessionId, requestedId);
   if (!purchaseIntent) return { type: 'text', content: '**Choose a product first**\n\nSelect one product card so I know exactly which item to prepare. I will not guess between multiple options.' };
+  if (!['selected', 'confirmed'].includes(purchaseIntent.state)) return { type: 'text', content: '**This item is not ready for checkout**\n\nAdd it to your cart, then say **checkout** when you are ready.' };
   if (new Date(purchaseIntent.expires_at).getTime() <= Date.now()) { await markIntentState(purchaseIntent.id, 'expired', { reserved_xlm: 0 }); return { type: 'text', content: '**Selection expired**\n\nThat product selection is no longer valid. Search again to receive current stock and pricing.' }; }
   let [site] = await db`select * from connected_sites where id = ${purchaseIntent.site_id} and user_id = ${userId} and status = 'active'`;
   if (!site) return { type: 'text', content: '**Store connection unavailable**\n\nThe selected store is no longer active or authorized.' };
@@ -531,7 +778,7 @@ async function createPurchaseBatch(userId, sessionId, intentIds) {
   const db = getDb();
   return db.begin(async (tx) => {
     const intents = await tx`select * from purchase_intents where id in ${tx(intentIds)} and user_id = ${userId} and session_id = ${sessionId} and state = 'selected' and batch_id is null order by updated_at desc`;
-    if (intents.length !== intentIds.length || intents.length < 2 || intents.length > 3) return null;
+    if (intents.length !== intentIds.length || intents.length < 2 || intents.length > 20) return null;
     const [batch] = await tx`insert into purchase_batches (user_id, session_id, state, expires_at) values (${userId}, ${sessionId}, 'selected', ${new Date(Date.now() + INTENT_TTL_MS).toISOString()}) returning *`;
     await tx`update purchase_intents set batch_id = ${batch.id}, updated_at = now() where id in ${tx(intents.map((item) => item.id))}`;
     return { ...batch, intents };
@@ -542,20 +789,20 @@ function basketLines(items, amountKey = 'price_xlm') {
   return items.map((item) => `- ${item.product_json.name} × ${item.quantity} — ${Number(item[amountKey]).toFixed(7)} XLM`).join('\n');
 }
 
-/** Verify or execute a basket of two or three already selected product cards. */
+/** Verify or execute a cart of independently selected products. */
 async function handleBatchConfirmation(userId, sessionId, googleSub, requestedIds, existingBatchId) {
   const db = getDb();
   let batch = null;
   let items = [];
   if (requestedIds?.length >= 2) {
     batch = await createPurchaseBatch(userId, sessionId, requestedIds);
-    if (!batch) return { type: 'text', content: '**Choose active product cards**\n\nA basket can contain two or three currently shown products. Search again if one of those cards has expired.' };
+    if (!batch) return { type: 'text', content: '**Cart needs attention**\n\nOne or more cart items are no longer active. Search again to refresh them.' };
     items = batch.intents;
   } else if (existingBatchId) {
     [batch] = await db`select * from purchase_batches where id = ${existingBatchId} and user_id = ${userId} and session_id = ${sessionId}`;
     if (batch) items = await db`select * from purchase_intents where batch_id = ${batch.id} and user_id = ${userId} order by created_at asc`;
   }
-  if (!batch || items.length < 2) return { type: 'text', content: '**No basket awaiting approval**\n\nChoose two or three product cards first.' };
+  if (!batch || items.length < 2) return { type: 'text', content: '**No cart awaiting checkout**\n\nAdd at least two products before checking out this cart.' };
   if (new Date(batch.expires_at).getTime() <= Date.now()) {
     await db`update purchase_batches set state = 'expired', updated_at = now() where id = ${batch.id}`;
     return { type: 'text', content: '**Basket expired**\n\nSearch again to receive current stock and merchant pricing.' };
@@ -632,17 +879,19 @@ async function handleBatchConfirmation(userId, sessionId, googleSub, requestedId
 
 async function handleCancel(userId, sessionId) {
   const db = getDb();
-  await db.begin(async (tx) => {
+  const cancelled = await db.begin(async (tx) => {
     const intents = await tx`
       update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now()
       where user_id = ${userId} and session_id = ${sessionId}
-        and state in ('selected', 'confirmed', 'policy_authorized', 'approval_required', 'approval_authorized')
+        and state in ('suggested', 'selected', 'confirmed', 'policy_authorized', 'approval_required', 'approval_authorized')
       returning id`;
     if (intents.length) {
       await tx`update purchase_approvals set state = 'expired' where user_id = ${userId} and purchase_intent_id in ${tx(intents.map((intent) => intent.id))} and state in ('prepared', 'authorized')`;
     }
+    return intents.length;
   });
-  await getDb()`update purchase_batches set state = 'cancelled', updated_at = now() where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
+  const batches = await getDb()`update purchase_batches set state = 'cancelled', updated_at = now() where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') returning id`;
+  if (!cancelled && !batches.length) return { type: 'text', content: '**No active cart or checkout**\n\nThere is nothing unverified to cancel. Completed Stellar payments cannot be reversed here.' };
   await markShoppingTask(userId, sessionId, 'cancelled');
   return { type: 'text', content: '**Selection cancelled**\n\nNo payment was made. You can start a new search whenever you are ready.' };
 }
