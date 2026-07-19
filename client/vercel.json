@@ -4,6 +4,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://api-production-fc4e.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
     }
   ],
   "headers": [
