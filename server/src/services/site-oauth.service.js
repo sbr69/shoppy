@@ -35,6 +35,13 @@ function endpoint(value, origin, name) {
   return url.toString();
 }
 
+function endpointTemplate(value, origin, name) {
+  if (typeof value !== 'string' || !value.includes('{product_id}')) throw new Error(`${name} must include {product_id}`);
+  const url = new URL(value.replace('{product_id}', 'sample-product'));
+  if (url.protocol !== 'https:' || url.origin !== origin) throw new Error(`${name} must be an HTTPS endpoint on the store origin`);
+  return value;
+}
+
 async function discover(siteUrl) {
   const origin = await safeOrigin(siteUrl);
   const [oauth, commerce] = await Promise.all([getJson(`${origin}/.well-known/oauth-authorization-server`), getJson(`${origin}/.well-known/agent-commerce`)]);
@@ -49,7 +56,7 @@ async function discover(siteUrl) {
   const confirmUrl = endpoint(commerce.checkout_confirm_endpoint, origin, 'checkout_confirm_endpoint');
   const merchant = commerce.settlement?.merchant_stellar_address;
   if (commerce.settlement?.network !== 'testnet' || commerce.settlement?.asset !== 'XLM' || typeof merchant !== 'string' || !/^G[A-Z2-7]{55}$/.test(merchant)) throw new Error('Store must publish a valid testnet XLM settlement configuration');
-  return { origin, oauth: { authorizationUrl, tokenUrl, registrationUrl, revocationUrl }, commerce: { searchUrl, prepareUrl, confirmUrl, ordersUrl: commerce.orders_endpoint ? endpoint(commerce.orders_endpoint, origin, 'orders_endpoint') : null, settlement: commerce.settlement } };
+  return { origin, oauth: { authorizationUrl, tokenUrl, registrationUrl, revocationUrl }, commerce: { searchUrl, prepareUrl, confirmUrl, ordersUrl: commerce.orders_endpoint ? endpoint(commerce.orders_endpoint, origin, 'orders_endpoint') : null, reviewsUrlTemplate: commerce.reviews_endpoint_template ? endpointTemplate(commerce.reviews_endpoint_template, origin, 'reviews_endpoint_template') : null, settlement: commerce.settlement } };
 }
 function readClient(site) { return JSON.parse(decrypt(Buffer.from(site.oauth_client_ciphertext, 'base64'), Buffer.from(site.oauth_client_iv, 'base64'), Buffer.from(site.oauth_client_tag, 'base64'), clientScope(site.id))); }
 

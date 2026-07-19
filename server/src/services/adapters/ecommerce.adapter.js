@@ -1,5 +1,6 @@
 import { BaseAdapter } from './adapter.base.js';
 import { getStoreAccessToken } from '../site-oauth.service.js';
+import getDb from '../../db/database.js';
 
 /**
  * Adapter for a registered merchant's explicit agent API. It intentionally
@@ -45,6 +46,47 @@ export class EcommerceAdapter extends BaseAdapter {
     const body = await this.request(url);
     const products = Array.isArray(body.products) ? body.products : [];
     return products.map((product) => this.normalizeProduct({ ...product, id: product.product_id, image: product.image_url, inStock: Number(product.stock) > 0 })).filter((product) => product.id && product.name && product.price > 0 && product.inStock);
+  }
+
+  async reviewUrlTemplate() {
+    if (this.manifest?.reviewsUrlTemplate) return this.manifest.reviewsUrlTemplate;
+    // Existing connections retain their OAuth session. Refresh only the public
+    // merchant capability document so users never have to reconnect to obtain
+    // a newly published read-only reviews capability.
+    try {
+      const origin = new URL(this.baseUrl).origin;
+      const response = await fetch(`${origin}/.well-known/agent-commerce`, {
+        headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000), redirect: 'error',
+      });
+      const metadata = response.ok ? await response.json() : null;
+      const template = typeof metadata?.reviews_endpoint_template === 'string' ? metadata.reviews_endpoint_template : null;
+      if (!template || !template.includes('{product_id}')) return null;
+      const sample = new URL(template.replace('{product_id}', 'sample-product'));
+      if (sample.protocol !== 'https:' || sample.origin !== origin) return null;
+      this.manifest = { ...this.manifest, reviewsUrlTemplate: template };
+      const db = getDb();
+      await db`update connected_sites set agent_manifest = ${db.json(this.manifest)}, updated_at = now() where id = ${this.site.id}`;
+      return template;
+    } catch (error) {
+      console.warn('Merchant review capability discovery skipped:', error.message);
+      return null;
+    }
+  }
+
+  async getProductReviews(product, limit = 12) {
+    const template = await this.reviewUrlTemplate();
+    if (!template || !product?.id) return null;
+    const url = new URL(template.replace('{product_id}', encodeURIComponent(String(product.id))));
+    url.searchParams.set('limit', String(Math.min(Math.max(Number(limit) || 12, 1), 50)));
+    const body = await this.request(url);
+    if (!Array.isArray(body)) throw new Error('Merchant review endpoint returned an invalid response');
+    return body.slice(0, 50).map((review) => ({
+      rating: Number(review?.rating),
+      title: String(review?.title || '').slice(0, 180),
+      body: String(review?.body || '').slice(0, 1_500),
+      verified: Boolean(review?.verified),
+      date: review?.date || null,
+    })).filter((review) => Number.isFinite(review.rating) && review.rating >= 1 && review.rating <= 5 && review.body);
   }
 
   async prepareCheckout(product, quantity, idempotencyKey, deliveryAddress) {

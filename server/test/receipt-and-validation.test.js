@@ -51,6 +51,23 @@ test('semantic decisions fail closed without a pending purchase', () => {
   assert.deepEqual(retrievalQueries({ product: 'wireless earbuds', searchQueries: ['Bluetooth earphones', 'wireless earbuds'] }), ['wireless earbuds', 'Bluetooth earphones']);
 });
 
+test('semantic follow-up questions stay scoped to products already shown', () => {
+  const productId = '8e7d154a-c7e0-4dcc-b98f-e46751af6114';
+  const intent = normalizeSemanticIntent({
+    action: 'question',
+    questionType: 'compare_ratings',
+    questionProductId: productId,
+  }, {
+    shownProducts: [{ purchaseIntentId: productId, name: 'Building Blocks Set', rating: 3.8, reviewCount: 55 }],
+  });
+  assert.equal(intent.action, 'question');
+  assert.equal(intent.questionType, 'compare_ratings');
+  assert.equal(intent.questionProductId, productId);
+  assert.equal(normalizeSemanticIntent({ action: 'question', questionProductId: 'not-shown' }, {
+    shownProducts: [{ purchaseIntentId: productId, name: 'Building Blocks Set' }],
+  }).questionProductId, null);
+});
+
 test('Soroban policy errors are presented as safe payment outcomes', () => {
   assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #8)')), /daily XLM allowance/i);
   assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #7)')), /per-transaction XLM limit/i);

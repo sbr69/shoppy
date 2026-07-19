@@ -57,6 +57,7 @@ export class BaseAdapter {
       image: raw.image || null,
       url: raw.url || null,
       rating: raw.rating || null,
+      reviewCount: Number.isFinite(Number(raw.reviewCount ?? raw.review_count)) ? Number(raw.reviewCount ?? raw.review_count) : null,
       brand: raw.brand || null,
       category: raw.category || null,
       tags: Array.isArray(raw.tags) ? raw.tags : [],

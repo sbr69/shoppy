@@ -73,7 +73,7 @@ Respond with JSON:
     }
     return {
       bestMatch: products[parsed.bestIndex],
-      reasoning: `${parsed.reasoning}${Array.isArray(parsed.unmetRequirements) && parsed.unmetRequirements.length ? ` Note: ${parsed.unmetRequirements.join(', ')} could not be verified.` : ''}`,
+      reasoning: `${parsed.reasoning}${Array.isArray(parsed.unmetRequirements) && parsed.unmetRequirements.length ? ` Note: ${parsed.unmetRequirements.join(', ')}.` : ''}`,
       alternatives: Array.isArray(parsed.alternativeIndexes) ? parsed.alternativeIndexes
         .filter((index) => Number.isInteger(index) && index >= 0 && index < products.length && index !== parsed.bestIndex)
         .slice(0, 2).map((index) => products[index]) : [],
