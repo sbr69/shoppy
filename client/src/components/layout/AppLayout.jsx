@@ -62,7 +62,9 @@ export default function AppLayout() {
     setView('chat');
     setSidebarOpen(false);
     try {
-      const { data } = await api.post('/chat/sessions');
+      // A New Chat action should focus an untouched draft when one already
+      // exists. It creates a draft only after every existing chat has content.
+      const { data } = await api.post('/chat/sessions', { reuseBlank: true });
       setSessionId(data.session.id);
     } catch {
       // The chat endpoint will still create a session if this lightweight request fails.
