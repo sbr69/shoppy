@@ -16,6 +16,7 @@ ${intent.maxPrice ? `Budget: max ${intent.currency || 'INR'} ${intent.maxPrice}`
 ${intent.mustHave?.length ? `Must have: ${intent.mustHave.join(', ')}` : ''}
 ${intent.preferences?.length ? `Nice to have: ${intent.preferences.join(', ')}` : ''}
 ${intent.exclusions?.length ? `Must avoid: ${intent.exclusions.join(', ')}` : ''}
+${intent.useCases?.length ? `Primary use: ${intent.useCases.join(', ')}` : ''}
 
 Here are the available products:
 ${JSON.stringify(products.map((p, i) => ({
@@ -27,6 +28,7 @@ ${JSON.stringify(products.map((p, i) => ({
   brand: p.brand,
   rating: p.rating,
   inStock: p.inStock,
+  semanticScore: p.semanticScore,
 })), null, 2)}
 
 Pick the BEST product for the user. Consider:
@@ -38,6 +40,7 @@ Pick the BEST product for the user. Consider:
 Respond with JSON:
 {
   "bestIndex": <number or null when no candidate is suitable>,
+  "alternativeIndexes": ["up to two distinct candidate indexes that are reasonable alternatives"],
   "matchQuality": <number from 0 to 1>,
   "reasoning": "<1-2 sentence explanation of why this is the best fit and any trade-off>",
   "unmetRequirements": ["<requirement not verified>"]
@@ -62,6 +65,9 @@ Respond with JSON:
     return {
       bestMatch: products[parsed.bestIndex],
       reasoning: `${parsed.reasoning}${Array.isArray(parsed.unmetRequirements) && parsed.unmetRequirements.length ? ` Note: ${parsed.unmetRequirements.join(', ')} could not be verified.` : ''}`,
+      alternatives: Array.isArray(parsed.alternativeIndexes) ? parsed.alternativeIndexes
+        .filter((index) => Number.isInteger(index) && index >= 0 && index < products.length && index !== parsed.bestIndex)
+        .slice(0, 2).map((index) => products[index]) : [],
       allProducts: products,
     };
   }

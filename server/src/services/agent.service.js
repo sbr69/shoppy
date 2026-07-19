@@ -8,14 +8,17 @@ import { markIntentState, reserveSpend } from './policy.service.js';
 import { recordWorkflowEvent } from './workflow.service.js';
 import { syncSitePolicy } from './site.service.js';
 import { deliveryAddress, getProfile } from './profile.service.js';
+import { cacheAuthorizedProducts, retrieveSemanticCandidates } from './catalog.service.js';
+import { getShoppingPreferences, saveShoppingPreferences } from './shopping-preference.service.js';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
 
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
-  const [pendingRows, recentMessages] = await Promise.all([
+  const [pendingRows, recentMessages, userPreferences] = await Promise.all([
     db`select state, product_json, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') order by updated_at desc limit 1`,
     db`select role, content from messages where session_id = ${sessionId} order by created_at desc limit 4`,
+    getShoppingPreferences(userId),
   ]);
   await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
   await db`update chat_sessions set title = case when title = 'New shopping chat' then left(${message}, 72) else title end, updated_at = now() where id = ${sessionId}`;
@@ -28,11 +31,16 @@ export async function processMessage(userId, sessionId, message, googleSub) {
       finalAmountXlm: pending.price_xlm,
     } : null,
     recentMessages: [...recentMessages].reverse(),
+    userPreferences,
   });
   let response;
   if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
   else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
   else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
+  else if (intent.action === 'remember_preference') {
+    const preferences = await saveShoppingPreferences(userId, intent.preferenceUpdate);
+    response = { type: 'text', content: `I’ll remember those shopping preferences for future searches: ${[...preferences.likes, ...preferences.avoids.map((value) => `avoid ${value}`), ...preferences.useCases].join(', ') || 'no specific preference was provided'}.` };
+  }
   else if (intent.action === 'greeting') response = { type: 'text', content: 'Hi! Tell me what you want to buy and I will search your authorized stores.' };
   else response = { type: 'text', content: intent.clarification || 'Tell me what you want to find, or ask about the item already shown. I will always ask before placing a payment.' };
   const [saved] = await db`insert into messages (session_id, role, content, metadata) values (${sessionId}, 'agent', ${response.content}, ${response.metadata ? db.json(response.metadata) : null}) returning id`;
@@ -50,32 +58,40 @@ async function handleSearch(userId, sessionId, intent) {
   }
   const queries = retrievalQueries(intent);
   if (!queries.length) return { type: 'text', content: 'Tell me a little more about the product you want me to find.' };
-  const results = await Promise.allSettled(sites.flatMap((site) => queries.map(async (query) =>
-    (await new EcommerceAdapter(site).searchProducts(query, { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
-      .map((product) => ({ ...product, siteId: site.id, retrievalQuery: query })),
-  )));
+  // Cached semantic candidates and live merchant searches run together. The
+  // merchant response remains authoritative for stock and checkout.
+  const semanticCandidates = retrieveSemanticCandidates(sites.map((site) => site.id), intent).catch(() => []);
+  const results = await Promise.allSettled([
+    ...sites.flatMap((site) => queries.map(async (query) =>
+      (await new EcommerceAdapter(site).searchProducts(query, { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
+        .map((product) => ({ ...product, siteId: site.id, retrievalQuery: query })),
+    )),
+    // A bounded browse verifies the current merchant catalogue. Cached vectors
+    // can improve recall, but never make a stale product purchasable.
+    ...sites.map(async (site) =>
+      (await new EcommerceAdapter(site).searchProducts('', { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
+        .map((product) => ({ ...product, siteId: site.id, retrievalQuery: 'catalog browse' })),
+    ),
+  ]);
   let products = [...new Map(results
     .filter((result) => result.status === 'fulfilled')
     .flatMap((result) => result.value)
     .map((product) => [`${product.siteId}:${product.id}`, product])).values()];
-  // Some merchant catalogs only match a narrow title term. If the semantic
-  // query ladder finds nothing, request each store's bounded live catalogue
-  // and let the semantic ranker decide whether any item actually fits.
-  if (!products.length) {
-    const browseResults = await Promise.allSettled(sites.map(async (site) =>
-      (await new EcommerceAdapter(site).searchProducts('', { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
-        .map((product) => ({ ...product, siteId: site.id, retrievalQuery: 'catalog browse' })),
-    ));
-    products = [...new Map(browseResults
-      .filter((result) => result.status === 'fulfilled')
-      .flatMap((result) => result.value)
-      .map((product) => [`${product.siteId}:${product.id}`, product])).values()];
-  }
+  try { await Promise.all(sites.map((site) => cacheAuthorizedProducts(site.id, products.filter((product) => product.siteId === site.id)))); } catch (error) { console.warn('Catalog cache update skipped:', error.message); }
+  let cachedProducts = await semanticCandidates;
+  // On a first search the cache was empty at the start. Re-read it after the
+  // authorized live catalogue has been embedded so semantic matching applies
+  // immediately rather than only on the user's next message.
+  if (!cachedProducts.length && products.length) cachedProducts = await retrieveSemanticCandidates(sites.map((site) => site.id), intent).catch(() => []);
+  const semanticByProduct = new Map(cachedProducts.map((product) => [`${product.siteId}:${product.id}`, product.semanticScore]));
+  products = products
+    .filter((product) => product.inStock && (intent.maxPrice === null || Number(product.price) <= intent.maxPrice) && (intent.minPrice === null || Number(product.price) >= intent.minPrice))
+    .map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
   if (!products.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
     return { type: 'text', content: `I searched your authorized stores for ${intent.product} using several meaning-based catalog queries, but none returned a live, in-stock match. I have not reserved an order or moved any funds.` };
   }
-  const { bestMatch, reasoning } = await rankProducts(products, intent);
+  const { bestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
   if (!bestMatch || !site) return { type: 'text', content: `I found catalog items, but none were a safe semantic fit for “${intent.rawQuery}”. I will not guess or prepare a checkout. Try adding one preference or a different budget.` };
   const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
@@ -83,7 +99,8 @@ async function handleSearch(userId, sessionId, intent) {
     insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
     values (${userId}, ${sessionId}, ${site.id}, ${db.json(bestMatch)}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
   await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: created.id, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: created.quantity, queries } });
-  return { type: 'product_suggestion', content: `I found ${bestMatch.name} at ${site.site_name}. ${reasoning} It is live and in stock. Review it when you are ready; I will only verify the merchant total after your first approval, and I will ask again before any payment.`, metadata: { product: bestMatch, reasoning, purchaseIntentId: created.id, quantity: created.quantity, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
+  const alternativeNote = alternatives.length ? ` I also found ${alternatives.map((product) => product.name).join(' and ')} as ${alternatives.length === 1 ? 'an alternative' : 'alternatives'}.` : '';
+  return { type: 'product_suggestion', content: `Best match: ${bestMatch.name} at ${site.site_name}. ${reasoning}${alternativeNote} It is live and in stock. Review it when you are ready; I will only verify the merchant total after your first approval, and I will ask again before any payment.`, metadata: { product: bestMatch, alternatives, reasoning, purchaseIntentId: created.id, quantity: created.quantity, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 
 async function findIntent(userId, sessionId, requestedId) {

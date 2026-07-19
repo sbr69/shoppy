@@ -3,6 +3,7 @@ import config from '../config/env.js';
 
 let genAI = null;
 let model = null;
+let embeddingModel = null;
 
 function getModel() {
   if (!model) {
@@ -13,6 +14,15 @@ function getModel() {
     model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
   }
   return model;
+}
+
+function getEmbeddingModel() {
+  if (!embeddingModel) {
+    if (!config.geminiApiKey || config.geminiApiKey === 'YOUR_GEMINI_API_KEY') return null;
+    genAI ||= new GoogleGenerativeAI(config.geminiApiKey);
+    embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
+  }
+  return embeddingModel;
 }
 
 /**
@@ -42,6 +52,22 @@ export async function generateText(prompt, { jsonMode = false } = {}) {
   } catch (err) {
     console.error('❌ Gemini API error:', err.message);
     throw err;
+  }
+}
+
+/** Create a normalized semantic-search vector. It never authorizes an action. */
+export async function embedText(text, taskType) {
+  const m = getEmbeddingModel();
+  if (!m || !text?.trim()) return null;
+  try {
+    const result = await m.embedContent({ content: { role: 'user', parts: [{ text: text.slice(0, 7000) }] }, ...(taskType ? { taskType } : {}) });
+    const values = result.embedding?.values;
+    if (!Array.isArray(values) || !values.length || values.some((value) => !Number.isFinite(value))) return null;
+    const magnitude = Math.hypot(...values);
+    return magnitude ? values.map((value) => value / magnitude) : null;
+  } catch (error) {
+    console.warn('Semantic embedding unavailable:', error.message);
+    return null;
   }
 }
 
