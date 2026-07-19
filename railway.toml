@@ -1,9 +1,9 @@
 [build]
-builder = "RAILPACK"
-buildCommand = "npm --prefix server ci"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "npm --prefix server run start"
+startCommand = "npm run start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 180
 restartPolicyType = "ON_FAILURE"
