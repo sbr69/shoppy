@@ -2,11 +2,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import StellarWalletLoginButton from '../components/common/StellarWalletLoginButton';
 import AppLayout from '../components/layout/AppLayout';
 import { useToast } from '../contexts/ToastContext';
 
 export default function Dashboard() {
-  const { isAuthenticated, loading, loginWithGoogle } = useAuth();
+  const { isAuthenticated, loading, loginWithGoogle, loginWithStellar } = useAuth();
   const navigate = useNavigate();
   const [loginError, setLoginError] = useState('');
   const toast = useToast();
@@ -48,7 +49,7 @@ export default function Dashboard() {
             <span style={{ fontSize: '1.45rem', fontWeight: 700 }}>JarvisPayz</span>
           </div>
           <h2>Welcome Back</h2>
-          <p>Sign in with Google to access your AI shopping agent and managed Stellar wallet.</p>
+          <p>Sign in with Google or your own Stellar wallet. Your managed shopping wallet remains separate.</p>
         </div>
 
         <div className="login-card-body">
@@ -71,6 +72,11 @@ export default function Dashboard() {
             width="320"
             text="signin_with"
             shape="pill"
+          />
+          <div className="login-method-divider" aria-hidden="true"><span>or</span></div>
+          <StellarWalletLoginButton
+            onSuccess={async (data) => { await loginWithStellar(data); navigate('/dashboard', { replace: true }); }}
+            onError={setLoginError}
           />
           {loginError && <p className="login-error" role="alert">{loginError}</p>}
         </div>

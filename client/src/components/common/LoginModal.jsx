@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 import { X } from '@phosphor-icons/react';
+import StellarWalletLoginButton from './StellarWalletLoginButton';
 
 export default function LoginModal({ isOpen, onClose }) {
-  const { loginWithGoogle } = useAuth();
+  const { loginWithGoogle, loginWithStellar } = useAuth();
   const navigate = useNavigate();
   const [loginError, setLoginError] = useState('');
   const [shouldRender, setShouldRender] = useState(isOpen);
@@ -60,7 +61,7 @@ export default function LoginModal({ isOpen, onClose }) {
           </div>
           <h2>Welcome Back</h2>
           <p>
-            Sign in with Google to access your AI shopping agent and managed Stellar wallet.
+            Use Google or your own Stellar wallet to access your AI shopping agent.
           </p>
         </div>
 
@@ -86,14 +87,19 @@ export default function LoginModal({ isOpen, onClose }) {
             text="signin_with"
             shape="pill"
           />
+          <div className="login-method-divider" aria-hidden="true"><span>or</span></div>
+          <StellarWalletLoginButton
+            onSuccess={async (data) => { await loginWithStellar(data); onClose(); navigate('/dashboard', { replace: true }); }}
+            onError={setLoginError}
+          />
           {loginError && <p className="login-error" role="alert" style={{ color: '#813f3c', fontSize: '0.84rem', margin: 0 }}>{loginError}</p>}
         </div>
 
         <div className="login-modal-footer">
           <p>
-            Your Stellar wallet is created and connected automatically.
+            Your managed shopping wallet is created separately and connected automatically.
             <br />
-            No extensions or seed phrases needed.
+            Your external wallet is only used to prove your identity.
           </p>
         </div>
       </div>

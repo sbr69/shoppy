@@ -48,7 +48,7 @@ router.post('/message', authenticate, chatMessageLimiter, async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Chat session not found' });
 
     // Process through the agent
-    const response = await processMessage(req.user.userId, session.id, cleanMessage, req.user.googleSub);
+    const response = await processMessage(req.user.userId, session.id, cleanMessage, req.user.walletScope || req.user.googleSub);
 
     res.json({
       sessionId: session.id,

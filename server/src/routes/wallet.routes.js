@@ -29,7 +29,7 @@ router.post('/fund', authenticate, async (req, res) => {
     const wallet = await getWalletByUserId(req.user.userId);
     if (!wallet?.public_key) return res.status(404).json({ error: 'Custodial wallet is unavailable' });
     const [owner, agent] = await Promise.all([fundWalletWithFriendbot(wallet.public_key), fundAgentWalletWithFriendbot(req.user.userId)]);
-    const smartWallet = await fundAgentSmartWalletFromCustody(req.user.userId, req.user.googleSub);
+    const smartWallet = await fundAgentSmartWalletFromCustody(req.user.userId, req.user.walletScope || req.user.googleSub);
     res.json({ ...owner, agent, smartWallet, alreadyFunded: smartWallet.alreadyFunded, message: smartWallet.alreadyFunded ? 'Agent Smart Wallet already funded' : `Agent Smart Wallet funded with ${smartWallet.fundedAmountXlm} test XLM` });
   } catch (error) { res.status(500).json({ error: 'Failed to fund testnet wallet' }); }
 });

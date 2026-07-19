@@ -11,9 +11,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@creit.tech/stellar-wallets-kit": "^1.9.5",
     "@phosphor-icons/react": "^2.1.10",
     "@react-oauth/google": "^0.13.5",
     "@sentry/react": "^10.66.0",
+    "@stellar/stellar-sdk": "^16.0.1",
     "axios": "^1.18.1",
     "posthog-js": "^1.404.1",
     "react": "^19.2.7",

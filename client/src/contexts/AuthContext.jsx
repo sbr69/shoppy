@@ -53,6 +53,16 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  const loginWithStellar = useCallback(async (data) => {
+    sessionStorage.setItem('jarvispays_token', data.token);
+    sessionStorage.setItem('jarvispays_user', JSON.stringify(data.user));
+    setToken(data.token);
+    setUser(data.user);
+    identifyProductUser(data.user?.id);
+    trackProductEvent('sign_in_completed', { method: 'stellar_wallet' });
+    return data;
+  }, []);
+
   /**
    * Logout — clear session.
    */
@@ -75,6 +85,7 @@ export function AuthProvider({ children }) {
         loading,
         isAuthenticated,
         loginWithGoogle,
+        loginWithStellar,
         logout,
       }}
     >

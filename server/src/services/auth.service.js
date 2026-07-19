@@ -4,6 +4,16 @@ import config from '../config/env.js';
 import getDb from '../db/database.js';
 import { ensureAgentWalletForUser, ensureCustodialWalletForUser } from './wallet.service.js';
 
+function issueSession(user) {
+  return jwt.sign({
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    googleSub: user.google_sub || null,
+    walletScope: user.wallet_scope || user.google_sub,
+  }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
+}
+
 /**
  * Verify a Google ID token and return the payload.
  */
@@ -63,12 +73,12 @@ export async function loginWithGoogle(idToken) {
     // Both secrets are encrypted server-side and the C... wallet later holds
     // all spendable shopping funds under on-chain policy.
     const [createdUser] = await db`
-      insert into users (google_sub, email, name, avatar_url)
-      values (${googleSub}, ${email}, ${name || email}, ${picture || null}) returning *`;
+      insert into users (google_sub, email, name, avatar_url, wallet_scope)
+      values (${googleSub}, ${email}, ${name || email}, ${picture || null}, ${googleSub}) returning *`;
     try {
       await Promise.all([
-        ensureCustodialWalletForUser(createdUser.id, googleSub),
-        ensureAgentWalletForUser(createdUser.id, googleSub),
+        ensureCustodialWalletForUser(createdUser.id, createdUser.wallet_scope),
+        ensureAgentWalletForUser(createdUser.id, createdUser.wallet_scope),
       ]);
     } catch (error) {
       await db`delete from users where id = ${createdUser.id}`;
@@ -79,23 +89,14 @@ export async function loginWithGoogle(idToken) {
     console.log(`🆕 New user created: ${email} (${createdUser.id})`);
   } else {
     await Promise.all([
-      ensureCustodialWalletForUser(user.id, googleSub),
-      ensureAgentWalletForUser(user.id, googleSub),
+      ensureCustodialWalletForUser(user.id, user.wallet_scope || googleSub),
+      ensureAgentWalletForUser(user.id, user.wallet_scope || googleSub),
     ]);
     console.log(`👤 Returning user: ${email}`);
   }
 
   // 5. Issue JWT
-  const token = jwt.sign(
-    {
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      googleSub: user.google_sub,
-    },
-    config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn }
-  );
+  const token = issueSession(user);
 
   return {
     token,

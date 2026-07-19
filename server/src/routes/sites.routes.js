@@ -50,7 +50,7 @@ router.post('/', authenticate, async (req, res) => {
  */
 router.patch('/:id', authenticate, async (req, res) => {
   try {
-    const site = await updateSite(req.user.userId, req.user.googleSub, req.params.id, req.body);
+    const site = await updateSite(req.user.userId, req.user.walletScope || req.user.googleSub, req.params.id, req.body);
     res.json({ site });
   } catch (err) {
     if (err.message === 'Site not found') {
@@ -81,7 +81,7 @@ router.get('/oauth/callback', async (req, res) => {
 });
 
 router.post('/:id/disconnect', authenticate, async (req, res) => {
-  try { res.json(await disconnectStore(req.user.userId, req.user.googleSub, req.params.id)); } catch (error) { res.status(error.message === 'Store not found' ? 404 : 400).json({ error: error.message }); }
+  try { res.json(await disconnectStore(req.user.userId, req.user.walletScope || req.user.googleSub, req.params.id)); } catch (error) { res.status(error.message === 'Store not found' ? 404 : 400).json({ error: error.message }); }
 });
 
 /**
