@@ -4,7 +4,13 @@ let walletKitPromise;
 // bundle and load it only after the user explicitly selects Stellar sign-in.
 async function getWalletKit() {
   if (!walletKitPromise) {
-    walletKitPromise = import('@creit.tech/stellar-wallets-kit').then(({ sep43Modules, StellarWalletsKit, WalletNetwork }) => ({
+    walletKitPromise = import('buffer').then(({ Buffer }) => {
+      // Wallet Kit dependencies expect the browser-safe Node global aliases.
+      // Define them immediately before their dynamic import, never globally at
+      // app startup.
+      if (!globalThis.Buffer) globalThis.Buffer = Buffer;
+      return import('@creit.tech/stellar-wallets-kit');
+    }).then(({ sep43Modules, StellarWalletsKit, WalletNetwork }) => ({
       network: WalletNetwork.TESTNET,
       kit: new StellarWalletsKit({
         network: WalletNetwork.TESTNET,

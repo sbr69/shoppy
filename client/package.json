@@ -17,6 +17,7 @@
     "@sentry/react": "^10.66.0",
     "@stellar/stellar-sdk": "^16.0.1",
     "axios": "^1.18.1",
+    "buffer": "^6.0.3",
     "posthog-js": "^1.404.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
