@@ -6,6 +6,7 @@ import { xlmToStroops } from '../src/services/soroban.service.js';
 import { normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
 import { availableCatalogCategories, noCredibleMatchMessage, paymentFailureDetail, resolveActiveProductReference, resolveActiveProductReferences } from '../src/services/agent.service.js';
 import { taskGoalToIntent, taskSeenProductKeys } from '../src/services/shopping-task.service.js';
+import { chooseRankedProduct } from '../src/services/product.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -85,6 +86,15 @@ test('semantic alternatives preserve the active shopping goal instead of startin
   assert.deepEqual(taskGoalToIntent(task).searchQueries, ['wireless audio', 'wireless headphones']);
   assert.deepEqual([...taskSeenProductKeys(task)], ['store-1:sony-xm5']);
   assert.equal(normalizeSemanticIntent({ action: 'browse_alternatives' }).action, 'other');
+});
+
+test('cross-currency caps do not turn a semantic wireless-audio match into a no-match', () => {
+  const headphones = { id: 'sony-xm5', name: 'Sony WH-1000XM5 Wireless Headphones', currency: 'USD', price: 348, semanticScore: 0.72 };
+  const chosen = chooseRankedProduct({ bestIndex: null, nearestIndex: 0, matchQuality: 0.82 }, [headphones], {
+    rawQuery: 'Find wireless audio under 300 XLM', product: 'wireless audio', maxPrice: 300, currency: 'XLM',
+  });
+  assert.equal(chosen.bestMatch, headphones);
+  assert.equal(chosen.budgetUnverified, true);
 });
 
 test('active product cards resolve exact names and generated checkout references', () => {
