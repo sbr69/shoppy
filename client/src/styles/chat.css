@@ -683,9 +683,9 @@
 }
 
 .message.user .message-bubble {
-  background: #f0fdfa; /* Soft calm teal light background */
-  color: #0f766e; /* Calm teal text color (ensures 4.5:1+ contrast ratio) */
-  border: 1px solid rgba(13, 148, 136, 0.12);
+  background: #eee7f2;
+  color: #493853;
+  border: 1px solid #ddd0e4;
   border-bottom-right-radius: var(--radius-sm);
 }
 

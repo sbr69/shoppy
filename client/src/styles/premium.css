@@ -332,7 +332,7 @@ button:disabled, [aria-disabled='true'] { cursor: not-allowed; opacity: 0.56; }
 .message.user .message-avatar { color: #f4f0e8; background: var(--plum); }
 .message-bubble { padding: 0.82rem 0.98rem; border-radius: 13px; box-shadow: var(--shadow-sm); }
 .message.agent .message-bubble { color: var(--ink); background: #f1ede5; border-color: var(--border-default); }
-.message.user .message-bubble { color: #f4f0e8; background: var(--plum); border-color: var(--plum); }
+.message.user .message-bubble { color: #493853; background: #eee7f2; border-color: #ddd0e4; }
 .message-time { color: var(--ink-muted); font-size: 0.62rem; }
 .chat-input-container { padding: 0.85rem clamp(1rem, 5vw, 4.4rem) 1.1rem; border-color: var(--border-subtle); background: var(--surface); }
 .chat-input-wrapper { padding: 0.38rem 0.42rem 0.38rem 0.95rem; border-color: var(--border-default); border-radius: 11px; background: #f1ede5; box-shadow: none; }
