@@ -16,7 +16,17 @@ const SUGGESTIONS = [
   'Find a gift under 500 XLM',
 ];
 
-export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged }) {
+const enrichMessages = (messages) => messages.map((msg) => {
+  if (msg.role === 'agent' && msg.metadata) {
+    if (msg.metadata.purchase?.txHash) return { ...msg, type: msg.metadata.purchase.pendingMerchantConfirmation ? 'purchase_pending' : 'purchase_success' };
+    if (msg.metadata.error && msg.metadata.product) return { ...msg, type: 'purchase_failed' };
+    if (msg.metadata.product && msg.metadata.reasoning) return { ...msg, type: 'product_suggestion', historical: true };
+    if (msg.metadata.status === 'pending_payment') return { ...msg, type: 'purchase_pending' };
+  }
+  return msg;
+});
+
+export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged, initialMessages }) {
   const { user } = useAuth();
   const toast = useToast();
   const [messages, setMessages] = useState([]);
@@ -40,16 +50,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       const { data } = await api.get('/chat/history', { params: sessionId ? { sessionId } : {} });
       if (data.sessionId && data.sessionId !== sessionId) onSessionReady?.(data.sessionId);
       if (data.messages) {
-        const enriched = data.messages.map(msg => {
-          if (msg.role === 'agent' && msg.metadata) {
-            if (msg.metadata.purchase?.txHash) return { ...msg, type: msg.metadata.purchase.pendingMerchantConfirmation ? 'purchase_pending' : 'purchase_success' };
-            if (msg.metadata.error && msg.metadata.product) return { ...msg, type: 'purchase_failed' };
-            if (msg.metadata.product && msg.metadata.reasoning) return { ...msg, type: 'product_suggestion', historical: true };
-            if (msg.metadata.status === 'pending_payment') return { ...msg, type: 'purchase_pending' };
-          }
-          return msg;
-        });
-        setMessages(enriched);
+        setMessages(enrichMessages(data.messages));
       }
     } catch (err) {
       console.error('Failed to load history:', err);
@@ -61,8 +62,13 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
   useEffect(() => {
     setInitialLoading(true);
     setMessages([]);
+    if (Array.isArray(initialMessages)) {
+      setMessages(enrichMessages(initialMessages));
+      setInitialLoading(false);
+      return;
+    }
     void loadHistory();
-  }, [loadHistory]);
+  }, [initialMessages, loadHistory]);
 
   const sendMessage = useCallback(async (messageText) => {
     const text = messageText || input.trim();
@@ -242,8 +248,10 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
             <h2>JarvisPayz Agent</h2>
           </div>
         </div>
-        <div className="chat-messages" style={{ alignItems: 'center', justifyContent: 'center' }} aria-live="polite" aria-label="Shopping conversation">
-          <div className="spinner-lg" />
+        <div className="chat-messages chat-history-skeleton" aria-live="polite" aria-label="Loading shopping conversation">
+          <div className="chat-history-skeleton-row"><span className="chat-history-skeleton-avatar" /><span className="chat-history-skeleton-bubble chat-history-skeleton-bubble--wide" /></div>
+          <div className="chat-history-skeleton-row chat-history-skeleton-row--user"><span className="chat-history-skeleton-bubble chat-history-skeleton-bubble--short" /></div>
+          <div className="chat-history-skeleton-row"><span className="chat-history-skeleton-avatar" /><span className="chat-history-skeleton-bubble chat-history-skeleton-bubble--medium" /></div>
         </div>
       </div>
     );

@@ -443,6 +443,36 @@ button:disabled, [aria-disabled='true'] { cursor: not-allowed; opacity: 0.56; }
   background-size: 220% 100%;
   animation: workspace-shimmer 1.35s linear infinite;
 }
+
+/* Content-level loading states keep the finished dashboard frame stable. */
+.chat-history-skeleton { display: flex; flex-direction: column; justify-content: center; gap: 1.45rem; padding: clamp(1.5rem, 5vw, 4rem); }
+.chat-history-skeleton-row { display: flex; align-items: flex-start; gap: 0.7rem; }
+.chat-history-skeleton-row--user { justify-content: flex-end; }
+.chat-history-skeleton-avatar,
+.chat-history-skeleton-bubble,
+.wallet-skeleton-label,
+.wallet-skeleton-balance,
+.wallet-skeleton-address,
+.wallet-skeleton-actions span,
+.workspace-list-skeleton span {
+  display: block;
+  background: linear-gradient(100deg, rgba(218, 211, 198, 0.72) 20%, rgba(248, 245, 238, 0.96) 42%, rgba(218, 211, 198, 0.72) 64%);
+  background-size: 220% 100%;
+  animation: workspace-shimmer 1.35s linear infinite;
+}
+.chat-history-skeleton-avatar { width: 28px; height: 28px; border-radius: 8px; flex: 0 0 auto; }
+.chat-history-skeleton-bubble { height: 46px; border-radius: 12px; }
+.chat-history-skeleton-bubble--wide { width: min(350px, 66%); }
+.chat-history-skeleton-bubble--medium { width: min(250px, 52%); }
+.chat-history-skeleton-bubble--short { width: min(175px, 38%); }
+.telemetry-wallet-skeleton { display: flex; flex-direction: column; gap: 0.65rem; }
+.wallet-skeleton-label { width: 42%; height: 8px; border-radius: 2px; }
+.wallet-skeleton-balance { width: 58%; height: 25px; border-radius: 5px; }
+.wallet-skeleton-address { width: 100%; height: 29px; border-radius: 6px; }
+.wallet-skeleton-actions { display: flex; gap: 0.5rem; margin-top: 0.15rem; }
+.wallet-skeleton-actions span { flex: 1; height: 32px; border-radius: 6px; }
+.workspace-list-skeleton { display: grid; width: min(100%, 640px); gap: 0.6rem; }
+.workspace-list-skeleton span { height: 46px; border-radius: 8px; }
 @keyframes workspace-shimmer { to { background-position: -220% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .workspace-skeleton-card,
@@ -454,6 +484,13 @@ button:disabled, [aria-disabled='true'] { cursor: not-allowed; opacity: 0.56; }
   .workspace-skeleton-eyebrow,
   .workspace-skeleton-button,
   .workspace-skeleton-store { animation: none; }
+  .chat-history-skeleton-avatar,
+  .chat-history-skeleton-bubble,
+  .wallet-skeleton-label,
+  .wallet-skeleton-balance,
+  .wallet-skeleton-address,
+  .wallet-skeleton-actions span,
+  .workspace-list-skeleton span { animation: none; }
 }
 .telemetry-header { padding: 1.3rem 1.15rem 1rem; border-color: var(--border-default); background: transparent; }
 .telemetry-header h2 { color: var(--ink); font-family: var(--font-sans); font-size: 0.88rem; }

@@ -64,8 +64,8 @@ export function OrdersView() {
     >
       {loading ? (
         <div className="workspace-loading-state">
-          <div className="spinner-lg" />
-          <p>Loading purchase ledger...</p>
+          <div className="workspace-list-skeleton" aria-hidden="true"><span /><span /><span /></div>
+          <p>Loading purchase ledger…</p>
         </div>
       ) : purchases.length === 0 ? (
         <div className="workspace-empty">
@@ -216,8 +216,8 @@ export function WalletActivityView() {
     >
       {loading ? (
         <div className="workspace-loading-state">
-          <div className="spinner-lg" />
-          <p>Loading activity ledger...</p>
+          <div className="workspace-list-skeleton" aria-hidden="true"><span /><span /><span /></div>
+          <p>Loading activity ledger…</p>
         </div>
       ) : activity.length === 0 ? (
         <div className="workspace-empty">
@@ -306,8 +306,8 @@ export function StoresView({ onConnectStore, refreshKey }) {
     >
       {loading ? (
         <div className="workspace-loading-state">
-          <div className="spinner-lg" />
-          <p>Loading store configurations...</p>
+          <div className="workspace-list-skeleton" aria-hidden="true"><span /><span /><span /></div>
+          <p>Loading store configurations…</p>
         </div>
       ) : sites.length === 0 ? (
         <div className="workspace-empty workspace-empty--stores">

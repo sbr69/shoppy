@@ -21,8 +21,8 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="dashboard-loading">
-        <div className="spinner-lg" />
-        <p>Loading...</p>
+        <div className="dashboard-loading-mark" aria-hidden="true" />
+        <p>Preparing your secure workspace…</p>
       </div>
     );
   }

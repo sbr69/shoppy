@@ -1,10 +1,36 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { processMessage, getOrCreateSession, getSessionMessages, listSessions, createSession, getSessionForUser, archiveSession, renameSession } from '../services/agent.service.js';
+import { getUserSites } from '../services/site.service.js';
 import { validateChatMessage } from '../services/validation.service.js';
 import { chatMessageLimiter, chatReadLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
+
+// One small dashboard read replaces the session-create, history, session-list,
+// and store-list requests that otherwise happen in sequence on every refresh.
+router.get('/bootstrap', authenticate, chatReadLimiter, async (req, res) => {
+  try {
+    const session = await getOrCreateSession(req.user.userId);
+    const [messages, sessions, sites] = await Promise.all([
+      getSessionMessages(session.id),
+      listSessions(req.user.userId),
+      getUserSites(req.user.userId),
+    ]);
+    res.json({
+      session,
+      sessions,
+      sites,
+      messages: messages.map((message) => ({
+        ...message,
+        metadata: message.metadata ? (typeof message.metadata === 'string' ? JSON.parse(message.metadata) : message.metadata) : null,
+      })),
+    });
+  } catch (error) {
+    console.error('Dashboard bootstrap error:', error.message);
+    res.status(500).json({ error: 'Failed to prepare dashboard' });
+  }
+});
 
 /**
  * POST /api/chat/message

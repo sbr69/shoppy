@@ -127,10 +127,7 @@ export default function WalletCard() {
           id="fund-wallet-btn"
         >
           {funding ? (
-            <>
-              <span className="spinner" />
-              Funding...
-            </>
+            'Funding…'
           ) : (
             <>☄️ Fund with Friendbot</>
           )}

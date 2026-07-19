@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import api from '../../services/api';
 import { captureClientException, trackProductEvent } from '../../services/observability';
@@ -13,26 +14,39 @@ import {
   ShieldCheck,
 } from '@phosphor-icons/react';
 
-export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, storeRefreshKey, walletRefreshKey, onWalletChanged }) {
+const walletCacheKey = (userId) => `jarvispayz_wallet_snapshot_${userId}`;
+const readWalletSnapshot = (userId) => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(walletCacheKey(userId)) || 'null');
+    return saved?.expiresAt > Date.now() ? saved.wallet : null;
+  } catch { return null; }
+};
+const saveWalletSnapshot = (userId, wallet) => {
+  try { sessionStorage.setItem(walletCacheKey(userId), JSON.stringify({ wallet, expiresAt: Date.now() + 60_000 })); } catch { /* Storage is an optional enhancement. */ }
+};
+
+export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, storeRefreshKey, walletRefreshKey, onWalletChanged, initialSites, bootstrapLoading = false }) {
   const toast = useToast();
-  const [wallet, setWallet] = useState(null);
-  const [walletLoading, setWalletLoading] = useState(true);
+  const { user } = useAuth();
+  const [wallet, setWallet] = useState(() => readWalletSnapshot(user?.id));
+  const [walletLoading, setWalletLoading] = useState(() => !readWalletSnapshot(user?.id));
   const [funding, setFunding] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [sites, setSites] = useState([]);
-  const [sitesLoading, setSitesLoading] = useState(true);
+  const [sites, setSites] = useState(initialSites || []);
+  const [sitesLoading, setSitesLoading] = useState(!Array.isArray(initialSites));
 
   const fetchWallet = useCallback(async ({ silent = false } = {}) => {
     try {
       if (!silent) setWalletLoading(true);
       const { data } = await api.get('/wallet');
       setWallet(data);
+      if (user?.id) saveWalletSnapshot(user.id, data);
     } catch {
       if (!silent) toast.error('Failed to load wallet');
     } finally {
       if (!silent) setWalletLoading(false);
     }
-  }, [toast]);
+  }, [toast, user?.id]);
 
   const fetchSites = useCallback(async () => {
     try {
@@ -48,8 +62,17 @@ export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, 
 
   useEffect(() => {
     fetchWallet();
+  }, [fetchWallet, walletRefreshKey]);
+
+  useEffect(() => {
+    if (bootstrapLoading) return;
+    if (Array.isArray(initialSites) && storeRefreshKey === 0) {
+      setSites(initialSites);
+      setSitesLoading(false);
+      return;
+    }
     fetchSites();
-  }, [fetchWallet, fetchSites, storeRefreshKey, walletRefreshKey]);
+  }, [bootstrapLoading, fetchSites, initialSites, storeRefreshKey]);
 
   // Silent poll for balance updates
   useEffect(() => {
@@ -119,8 +142,10 @@ export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, 
 
           {walletLoading ? (
             <div className="telemetry-wallet-skeleton">
-              <div className="skeleton-line skeleton-lg" style={{ marginBottom: 8 }} />
-              <div className="skeleton-line skeleton-sm" />
+              <span className="wallet-skeleton-label" />
+              <span className="wallet-skeleton-balance" />
+              <span className="wallet-skeleton-address" />
+              <div className="wallet-skeleton-actions"><span /><span /></div>
             </div>
           ) : (
             <div className="telemetry-wallet-card">
@@ -152,9 +177,7 @@ export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, 
               <div className="telemetry-wallet-actions">
                 <button className="btn btn-primary" onClick={handleFund} disabled={funding}>
                   {funding ? (
-                    <>
-                      <span className="spinner" /> Funding...
-                    </>
+                    'Funding…'
                   ) : (
                     <>
                       <Coins size={14} weight="bold" /> Fund

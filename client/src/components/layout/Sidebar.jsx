@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
@@ -18,19 +18,26 @@ import {
   X,
 } from '@phosphor-icons/react';
 
-export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect }) {
+export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect, initialSessions, bootstrapLoading = false }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
-  const [sessions, setSessions] = useState([]);
+  const [sessions, setSessions] = useState(initialSessions || []);
   const [menuId, setMenuId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
+  const hydratedInitialSessions = useRef(false);
 
   useEffect(() => {
+    if (bootstrapLoading) return;
+    if (!hydratedInitialSessions.current && Array.isArray(initialSessions)) {
+      setSessions(initialSessions);
+      hydratedInitialSessions.current = true;
+      return;
+    }
     api.get('/chat/sessions').then(({ data }) => setSessions(data.sessions || [])).catch(() => setSessions([]));
-  }, [activeSessionId]);
+  }, [activeSessionId, bootstrapLoading, initialSessions]);
 
   const selectSession = (id) => onSessionSelect?.(id);
 

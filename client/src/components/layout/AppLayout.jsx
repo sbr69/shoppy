@@ -7,11 +7,11 @@ import api from '../../services/api';
 import ConnectSiteModal from '../settings/ConnectSiteModal';
 import StoreDetailsModal from '../settings/StoreDetailsModal';
 
-function WorkspaceLoadingSkeleton({ telemetryOpen }) {
+function WorkspaceLoadingSkeleton() {
   return (
-    <div className="chat-workspace workspace-loading-shell" aria-busy="true" aria-live="polite">
+    <section className="chat-container workspace-skeleton-card workspace-loading-shell" aria-busy="true" aria-live="polite">
       <p className="sr-only">Preparing your shopping workspace.</p>
-      <section className="chat-container workspace-skeleton-card" aria-hidden="true">
+      <div aria-hidden="true">
         <div className="workspace-skeleton-chat-header">
           <span className="workspace-skeleton-avatar" />
           <div>
@@ -37,30 +37,8 @@ function WorkspaceLoadingSkeleton({ telemetryOpen }) {
           <span className="workspace-skeleton-line workspace-skeleton-input-line" />
           <span className="workspace-skeleton-control" />
         </div>
-      </section>
-      {telemetryOpen && (
-        <aside className="telemetry-panel workspace-skeleton-panel" aria-hidden="true">
-          <div className="workspace-skeleton-panel-header">
-            <span className="workspace-skeleton-avatar workspace-skeleton-avatar--small" />
-            <span className="workspace-skeleton-line workspace-skeleton-panel-title" />
-          </div>
-          <div className="workspace-skeleton-panel-body">
-            <span className="workspace-skeleton-eyebrow" />
-            <div className="workspace-skeleton-metric-card">
-              <span className="workspace-skeleton-line workspace-skeleton-balance" />
-              <span className="workspace-skeleton-line workspace-skeleton-address" />
-              <div className="workspace-skeleton-actions">
-                <span className="workspace-skeleton-button" />
-                <span className="workspace-skeleton-button" />
-              </div>
-            </div>
-            <span className="workspace-skeleton-eyebrow" />
-            <div className="workspace-skeleton-store" />
-            <div className="workspace-skeleton-store workspace-skeleton-store--short" />
-          </div>
-        </aside>
-      )}
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -69,6 +47,7 @@ export default function AppLayout() {
   const [view, setView] = useState('chat');
   const [sessionId, setSessionId] = useState(null);
   const [sessionBootstrapping, setSessionBootstrapping] = useState(true);
+  const [bootstrap, setBootstrap] = useState(null);
   const [connectStoreOpen, setConnectStoreOpen] = useState(false);
   const [storeRefreshKey, setStoreRefreshKey] = useState(0);
   const [walletRefreshKey, setWalletRefreshKey] = useState(0);
@@ -76,27 +55,30 @@ export default function AppLayout() {
   const [selectedStore, setSelectedStore] = useState(null);
   const initialSessionRequested = useRef(false);
 
-  const startNewChat = useCallback(async ({ initial = false } = {}) => {
+  const startNewChat = useCallback(async () => {
     setView('chat');
     setSidebarOpen(false);
     try {
-      const { data } = await api.post('/chat/sessions', initial ? { reuseBlank: true } : {});
+      const { data } = await api.post('/chat/sessions');
       setSessionId(data.session.id);
     } catch {
       // The chat endpoint will still create a session if this lightweight request fails.
       setSessionId(null);
-    } finally {
-      if (initial) setSessionBootstrapping(false);
     }
   }, []);
 
-  // Each dashboard visit deliberately begins a clean conversation. Older
-  // chats are retained in history and only load when the user selects one.
   useEffect(() => {
     if (initialSessionRequested.current) return;
     initialSessionRequested.current = true;
-    void startNewChat({ initial: true });
-  }, [startNewChat]);
+    api.get('/chat/bootstrap')
+      .then(({ data }) => {
+        setBootstrap(data);
+        setSessionId(data.session?.id || null);
+      })
+      // Fall back to each panel's own request path if bootstrap is temporarily unavailable.
+      .catch(() => setBootstrap(null))
+      .finally(() => setSessionBootstrapping(false));
+  }, []);
 
   return (
     <div className="app-layout">
@@ -108,18 +90,23 @@ export default function AppLayout() {
         onNewChat={startNewChat}
         activeSessionId={sessionId}
         onSessionSelect={(id) => { setSessionId(id); setView('chat'); setSidebarOpen(false); }}
+        initialSessions={bootstrap?.sessions}
+        bootstrapLoading={sessionBootstrapping}
       />
-      {view === 'chat' && (sessionBootstrapping ? (
-        <WorkspaceLoadingSkeleton telemetryOpen={telemetryOpen} />
-      ) : (
+      {view === 'chat' && (
         <div className="chat-workspace">
+          {sessionBootstrapping ? (
+            <WorkspaceLoadingSkeleton />
+          ) : (
           <ChatWindow
             sessionId={sessionId}
             onSessionReady={setSessionId}
+            initialMessages={bootstrap?.session?.id === sessionId ? bootstrap.messages : undefined}
             onToggleTelemetry={() => setTelemetryOpen(prev => !prev)}
             telemetryOpen={telemetryOpen}
             onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
           />
+          )}
           <TelemetryPanel
             isOpen={telemetryOpen}
             onConnectStore={() => setConnectStoreOpen(true)}
@@ -127,9 +114,11 @@ export default function AppLayout() {
             walletRefreshKey={walletRefreshKey}
             onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
             onStoreSelect={setSelectedStore}
+            initialSites={bootstrap?.sites}
+            bootstrapLoading={sessionBootstrapping}
           />
         </div>
-      ))}
+      )}
       {view === 'orders' && <OrdersView />}
       {view === 'wallet' && <WalletActivityView />}
       <ConnectSiteModal

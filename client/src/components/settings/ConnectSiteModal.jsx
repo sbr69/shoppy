@@ -127,7 +127,7 @@ export default function ConnectSiteModal({ isOpen, onClose }) {
               id="connect-site-submit"
             >
               {loading ? (
-                <><span className="spinner" /> Connecting...</>
+                'Connecting…'
               ) : (
                 'Connect'
               )}
