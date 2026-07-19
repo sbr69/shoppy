@@ -1,4 +1,4 @@
-import { User, Lightning } from '@phosphor-icons/react';
+import { User } from '@phosphor-icons/react';
 
 function InlineText({ value }) {
   return String(value).split(/(\*\*[^*]+\*\*)/g).map((part, index) => (
@@ -24,7 +24,7 @@ function RichAgentMessage({ content }) {
   );
 }
 
-export default function MessageBubble({ message, userAvatar }) {
+export default function MessageBubble({ message }) {
   const isUser = message.role === 'user';
   const isStructured = !isUser && /^\s*\*\*[^*]+\*\*/.test(String(message.content || ''));
   const time = message.created_at
@@ -34,11 +34,7 @@ export default function MessageBubble({ message, userAvatar }) {
   return (
     <div className={`message ${isUser ? 'user' : 'agent'}`}>
       <div className="message-avatar">
-        {isUser ? (
-          userAvatar ? <img src={userAvatar} alt="You" referrerPolicy="no-referrer" /> : <User size={14} weight="bold" />
-        ) : (
-          <Lightning size={14} weight="fill" />
-        )}
+        {isUser ? <User size={15} weight="bold" aria-label="You" /> : <img className="message-agent-logo" src="/logo.svg" alt="JarvisPayz Agent" />}
       </div>
       <div className="message-content">
         <div className={`message-bubble ${!isUser ? 'message-bubble--agent-format' : ''} ${isStructured ? 'message-bubble--structured' : ''}`}>

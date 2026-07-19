@@ -661,6 +661,11 @@
   object-fit: cover;
 }
 
+.message-avatar .message-agent-logo {
+  padding: 2px;
+  object-fit: contain;
+}
+
 .message-content {
   display: flex;
   flex-direction: column;
