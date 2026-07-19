@@ -38,7 +38,7 @@ export default function LoginModal({ isOpen, onClose }) {
   if (!shouldRender) return null;
 
   return (
-    <div className={`modal-overlay ${animateOut ? 'animate-out' : ''}`} onClick={onClose} style={{ zIndex: 1000 }}>
+    <div className={`modal-overlay ${animateOut ? 'animate-out' : ''}`} onClick={onClose}>
       <div 
         className={`modal-card glass-card login-modal-card ${animateOut ? 'animate-out' : ''}`} 
         role="dialog" 

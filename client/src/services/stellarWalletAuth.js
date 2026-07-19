@@ -15,6 +15,9 @@ async function getWalletKit() {
       kit: new StellarWalletsKit({
         network: WalletNetwork.TESTNET,
         selectedWalletId: 'freighter',
+        // Only show wallets that implement SEP-43 signed messages. The signed
+        // message is the proof-of-wallet-control used for JarvisPayz login;
+        // listing transaction-only wallets would lead users into a dead end.
         modules: sep43Modules(),
         modalTheme: {
           bgColor: '#f7f4ee', textColor: '#2e2924', solidTextColor: '#2e2924', headerButtonColor: '#b8684f',
