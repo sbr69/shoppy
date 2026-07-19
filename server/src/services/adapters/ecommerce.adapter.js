@@ -55,7 +55,7 @@ export class EcommerceAdapter extends BaseAdapter {
     // a newly published read-only reviews capability.
     try {
       const origin = new URL(this.baseUrl).origin;
-      const response = await fetch(`${origin}/.well-known/agent-commerce`, {
+      const response = await fetch(`${origin}/.well-known/agent-commerce?capability=reviews-v1`, {
         headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000), redirect: 'error',
       });
       const metadata = response.ok ? await response.json() : null;

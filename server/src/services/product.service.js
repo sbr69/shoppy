@@ -35,6 +35,7 @@ Pick the BEST product for the user. Consider:
 1. First reject candidates that conflict with a must-have, exclusion, or budget.
 2. Compare meaning, use case, attributes, and product descriptions—not only overlapping words.
 3. Prefer stronger ratings/value only after relevance.
+3a. For requests such as "best reviewed gift for a child", use ratings only to choose among child-gift candidates. Never replace the requested category with an unrelated highly rated product.
 4. Do not claim an attribute that is missing from the merchant data.
 5. When no product is suitable, set bestIndex to null. Set nearestIndex only for a product that is genuinely related by category or use case, but explain why it is not a safe recommendation. Never name an arbitrary catalog item as a near match.
 5. When at least two reasonable candidates exist, always return one or two distinct alternativeIndexes. Leave it empty only when no other candidate is genuinely relevant.
