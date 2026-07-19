@@ -1,22 +1,18 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { X, User, MapPin, Gear, FloppyDisk, Wallet } from '@phosphor-icons/react';
-import StellarWalletLoginButton from '../common/StellarWalletLoginButton';
+import { X, User, MapPin, Gear, FloppyDisk } from '@phosphor-icons/react';
 
 export default function SettingsPanel({ isOpen, onClose }) {
   const [profile, setProfile] = useState({ fullName: '', phone: '', line1: '', city: '', state: '', postalCode: '', country: '' });
   const [savingProfile, setSavingProfile] = useState(false);
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [animateOut, setAnimateOut] = useState(false);
-  const [identities, setIdentities] = useState([]);
-  const [walletNotice, setWalletNotice] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       setShouldRender(true);
       setAnimateOut(false);
       api.get('/profile').then(({ data }) => setProfile((current) => ({ ...current, ...(data.profile || {}) }))).catch(() => {});
-      api.get('/auth/stellar/identities').then(({ data }) => setIdentities(data.identities || [])).catch(() => {});
     } else if (shouldRender) {
       setAnimateOut(true);
       const timer = setTimeout(() => {
@@ -80,19 +76,6 @@ export default function SettingsPanel({ isOpen, onClose }) {
                 />
               </label>
             </div>
-          </div>
-
-          <div className="settings-group-card">
-            <div className="settings-group-title"><Wallet size={16} weight="bold" /><span>Sign-in wallet</span></div>
-            <p className="form-hint" style={{ marginBottom: 12 }}>Link your own Stellar wallet once to sign in to this same JarvisPayz account without creating another managed shopping wallet.</p>
-            {identities.map((identity) => <p className="linked-wallet" key={identity.public_key}>{identity.public_key}</p>)}
-            <StellarWalletLoginButton
-              link
-              className="settings-wallet-link"
-              onSuccess={(data) => { setIdentities((current) => current.some((item) => item.public_key === data.publicKey) ? current : [...current, { public_key: data.publicKey }]); setWalletNotice('Stellar wallet linked to this account.'); }}
-              onError={setWalletNotice}
-            />
-            {walletNotice && <p className="form-hint" role="status" style={{ marginTop: 10 }}>{walletNotice}</p>}
           </div>
 
           {/* Shipping Address Group */}
