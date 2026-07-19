@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { Lightning } from '@phosphor-icons/react';
 
 export default function Footer() {
   return (

@@ -1,4 +1,7 @@
 #![no_std]
+// Soroban entrypoints deliberately mirror the deployed ABI. Grouping these
+// arguments would change the contract interface and break existing callers.
+#![allow(clippy::too_many_arguments)]
 
 use jarvis_policy_interface::TrustListClient;
 use soroban_sdk::{contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, token, Address, BytesN, Env};
@@ -59,7 +62,7 @@ impl SpendGuard {
     }
     pub fn deposit(env: Env, owner: Address, amount: i128) {
         Self::ready(&env); owner.require_auth(); Self::positive(&env, amount);
-        token::Client::new(&env, &Self::token(&env)).transfer(&owner, &env.current_contract_address(), &amount);
+        token::Client::new(&env, &Self::token(&env)).transfer(&owner, env.current_contract_address(), &amount);
         let balance = Self::balance(&env, &owner) + amount;
         env.storage().persistent().set(&DataKey::Escrow(owner.clone()), &balance);
         DepositEvent { owner, amount }.publish(&env);
@@ -100,4 +103,46 @@ impl SpendGuard {
     fn token(env: &Env) -> Address { env.storage().instance().get(&DataKey::Token).unwrap_or_else(|| panic_with_error!(env, SpendGuardError::NotInitialized)) }
     fn trust_list(env: &Env) -> Address { env.storage().instance().get(&DataKey::TrustList).unwrap_or_else(|| panic_with_error!(env, SpendGuardError::NotInitialized)) }
     fn balance(env: &Env, owner: &Address) -> i128 { env.storage().persistent().get(&DataKey::Escrow(owner.clone())).unwrap_or(0) }
+}
+
+#[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
+mod test {
+    use super::{SpendGuard, SpendGuardClient};
+    use jarvis_trust_list::{TrustList, TrustListClient};
+    use soroban_sdk::{symbol_short, testutils::Address as _, token, Address, BytesN, Env};
+
+    #[test]
+    fn trusted_guarded_spend_releases_only_the_approved_escrow_amount() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let owner = Address::generate(&env);
+        let agent = Address::generate(&env);
+        let merchant = Address::generate(&env);
+        let domain = BytesN::from_array(&env, &[8; 32]);
+        let intent = BytesN::from_array(&env, &[9; 32]);
+        let receipt = BytesN::from_array(&env, &[10; 32]);
+
+        let trust_list_id = env.register(TrustList, ());
+        let trust_list = TrustListClient::new(&env, &trust_list_id);
+        trust_list.initialize();
+        trust_list.set_rule(&owner, &domain, &merchant, &1_000, &500, &symbol_short!("general"), &true, &1);
+
+        let token_id = env.register_stellar_asset_contract_v2(owner.clone()).address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+        token_admin.mint(&owner, &1_000);
+
+        let guard_id = env.register(SpendGuard, ());
+        let guard = SpendGuardClient::new(&env, &guard_id);
+        guard.initialize(&token_id, &trust_list_id);
+        guard.set_agent(&owner, &agent);
+        guard.deposit(&owner, &1_000);
+        guard.spend(&owner, &agent, &domain, &merchant, &250, &intent, &receipt);
+
+        let token_client = token::TokenClient::new(&env, &token_id);
+        assert_eq!(token_client.balance(&merchant), 250);
+        assert_eq!(guard.escrow_balance(&owner), 750);
+    }
 }

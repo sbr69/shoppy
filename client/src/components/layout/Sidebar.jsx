@@ -5,7 +5,6 @@ import api from '../../services/api';
 import SettingsPanel from '../settings/SettingsPanel';
 import ConfirmDialog from '../common/ConfirmDialog';
 import {
-  Lightning,
   PlusCircle,
   Gear,
   SignOut,
@@ -17,11 +16,10 @@ import {
   Trash,
   Check,
   X,
-  User,
 } from '@phosphor-icons/react';
 
 export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNavigate, onNewChat, activeSessionId, onSessionSelect }) {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   const [sessions, setSessions] = useState([]);

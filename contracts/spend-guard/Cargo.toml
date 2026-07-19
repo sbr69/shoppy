@@ -10,3 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 soroban-sdk = { workspace = true }
 jarvis-policy-interface = { path = "../policy-interface" }
+
+[dev-dependencies]
+jarvis-trust-list = { path = "../trust-list" }
+soroban-sdk = { workspace = true, features = ["testutils"] }

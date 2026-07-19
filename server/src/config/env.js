@@ -37,6 +37,11 @@ function parseSupportedStores(value) {
   }
 }
 
+function boundedRate(value, fallback) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
+}
+
 const nodeEnv = process.env.NODE_ENV || 'development';
 const jwtSecret = requireProductionSecret('JWT_SECRET', process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production', 'dev-jwt-secret-change-in-production');
 const masterSecret = requireProductionSecret('MASTER_SECRET', process.env.MASTER_SECRET || 'dev-master-secret-change-in-production', 'dev-master-secret-change-in-production');
@@ -68,6 +73,8 @@ const config = {
   // to the client or committed to source control.
   supabaseDbUrl: process.env.SUPABASE_DB_URL,
   databasePoolMax: Number.parseInt(process.env.DATABASE_POOL_MAX || '10', 10),
+  sentryDsn: process.env.SENTRY_DSN || '',
+  sentryTracesSampleRate: boundedRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 0.1),
 
   // Stellar
   stellarNetwork: process.env.STELLAR_NETWORK || 'testnet',

@@ -6,7 +6,8 @@ import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
 import ReceiptCard from './ReceiptCard';
 import TypingIndicator from './TypingIndicator';
-import { Lightning, ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders } from '@phosphor-icons/react';
+import { ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders } from '@phosphor-icons/react';
+import { captureClientException, trackProductEvent } from '../../services/observability';
 
 const SUGGESTIONS = [
   'Find wireless audio under 300 XLM',
@@ -77,11 +78,13 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+    trackProductEvent('agent_message_submitted', { has_active_session: Boolean(sessionId) });
 
     try {
       const { data } = await api.post('/chat/message', { message: text, ...(sessionId ? { sessionId } : {}) });
       if (data.sessionId && data.sessionId !== sessionId) onSessionReady?.(data.sessionId);
       const response = data.response;
+      trackProductEvent('agent_response_received', { response_type: response.type || 'text' });
 
       // Add agent response to state
       const agentMsg = {
@@ -95,14 +98,18 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       setMessages(prev => [...prev, agentMsg]);
 
       if (response.type === 'purchase_success') {
+        trackProductEvent('purchase_payment_confirmed');
         toast.success('Purchase confirmed on Stellar!');
         onWalletChanged?.();
       } else if (response.type === 'purchase_failed') {
+        trackProductEvent('purchase_payment_failed');
         toast.error('Payment failed: ' + (response.metadata?.error || 'Unknown error'));
       } else if (response.type === 'purchase_pending') {
+        trackProductEvent('purchase_payment_pending');
         onWalletChanged?.();
       }
     } catch (err) {
+      if (err.response?.status !== 429) captureClientException(err, { feature: 'chat_submission', status: err.response?.status || 0 });
       const retryAfter = Number.parseInt(err.response?.headers?.['retry-after'] || err.response?.data?.retryAfterSeconds, 10);
       const errorMsg = err.response?.status === 429 && Number.isFinite(retryAfter)
         ? `You have sent messages quickly. Please try again in ${retryAfter} second${retryAfter === 1 ? '' : 's'}.`

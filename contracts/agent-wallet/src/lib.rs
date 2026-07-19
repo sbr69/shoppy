@@ -1,4 +1,7 @@
 #![no_std]
+// The public methods are the deployed contract ABI. Keep their shape stable
+// for the backend and existing smart wallets.
+#![allow(clippy::too_many_arguments)]
 
 use jarvis_policy_interface::TrustListClient;
 use soroban_sdk::{contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, token, Address, BytesN, Env};
@@ -96,7 +99,7 @@ impl AgentWallet {
         Self::ready(&env);
         Self::require_owner(&env, &owner);
         Self::positive(&env, amount);
-        token::Client::new(&env, &Self::token(&env)).transfer(&owner, &env.current_contract_address(), &amount);
+        token::Client::new(&env, &Self::token(&env)).transfer(&owner, env.current_contract_address(), &amount);
         WalletFundedEvent { owner, amount }.publish(&env);
     }
 
@@ -215,5 +218,45 @@ impl AgentWallet {
         if amount <= 0 {
             panic_with_error!(env, AgentWalletError::InvalidAmount);
         }
+    }
+}
+
+#[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
+mod test {
+    use super::{AgentWallet, AgentWalletClient};
+    use jarvis_trust_list::{TrustList, TrustListClient};
+    use soroban_sdk::{symbol_short, testutils::Address as _, token, Address, BytesN, Env};
+
+    #[test]
+    fn guarded_spend_moves_funds_only_to_the_trusted_merchant() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let owner = Address::generate(&env);
+        let agent = Address::generate(&env);
+        let merchant = Address::generate(&env);
+        let domain = BytesN::from_array(&env, &[3; 32]);
+        let intent = BytesN::from_array(&env, &[4; 32]);
+        let receipt = BytesN::from_array(&env, &[5; 32]);
+
+        let trust_list_id = env.register(TrustList, ());
+        let trust_list = TrustListClient::new(&env, &trust_list_id);
+        trust_list.initialize();
+        trust_list.set_rule(&owner, &domain, &merchant, &1_000, &500, &symbol_short!("general"), &true, &1);
+
+        let token_id = env.register_stellar_asset_contract_v2(owner.clone()).address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+        token_admin.mint(&owner, &1_000);
+
+        let wallet_id = env.register(AgentWallet, (&owner, &agent, &token_id, &trust_list_id));
+        let wallet = AgentWalletClient::new(&env, &wallet_id);
+        wallet.fund(&owner, &1_000);
+        wallet.spend(&agent, &domain, &merchant, &250, &intent, &receipt);
+
+        let token_client = token::TokenClient::new(&env, &token_id);
+        assert_eq!(token_client.balance(&merchant), 250);
+        assert_eq!(wallet.balance(), 750);
     }
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import api from '../../services/api';
+import { captureClientException, trackProductEvent } from '../../services/observability';
 import {
   Wallet,
   Coins,
@@ -66,16 +67,20 @@ export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, 
   const handleFund = async () => {
     try {
       setFunding(true);
+      trackProductEvent('wallet_funding_requested');
       const { data } = await api.post('/wallet/fund');
       await fetchWallet();
       if (data.alreadyFunded) {
+        trackProductEvent('wallet_funding_already_available');
         toast.info('Wallet already funded');
       } else {
+        trackProductEvent('wallet_funding_completed');
         const fundedAmount = data.smartWallet?.fundedAmountXlm;
         toast.success(`Agent wallet funded with ${fundedAmount || 'test'} XLM!`);
         onWalletChanged?.();
       }
-    } catch {
+    } catch (error) {
+      captureClientException(error, { feature: 'wallet_funding', status: error.response?.status || 0 });
       toast.error('Failed to fund wallet. Try again.');
     } finally {
       setFunding(false);

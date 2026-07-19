@@ -1,4 +1,7 @@
 #![no_std]
+// Soroban entrypoints deliberately mirror the deployed ABI. Grouping these
+// arguments would change the contract interface and break existing callers.
+#![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol};
 
@@ -59,4 +62,36 @@ impl TrustList {
         Self::ready(&env); env.storage().persistent().get(&DataKey::Rule(owner, domain_hash))
     }
     fn ready(env: &Env) { if !env.storage().instance().has(&DataKey::Initialized) { panic_with_error!(env, TrustListError::NotInitialized); } }
+}
+
+#[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
+mod test {
+    use super::{TrustList, TrustListClient};
+    use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env};
+
+    #[test]
+    fn owner_can_store_read_and_remove_a_merchant_rule() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(TrustList, ());
+        let client = TrustListClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let merchant = Address::generate(&env);
+        let domain = BytesN::from_array(&env, &[7; 32]);
+
+        client.initialize();
+        client.set_rule(&owner, &domain, &merchant, &1_000, &400, &symbol_short!("general"), &true, &1);
+
+        let rule = client.get_rule(&owner, &domain).expect("rule should be stored");
+        assert_eq!(rule.merchant, merchant);
+        assert_eq!(rule.daily_limit, 1_000);
+        assert_eq!(rule.per_transaction_limit, 400);
+        assert!(rule.enabled);
+
+        client.remove_rule(&owner, &domain);
+        assert!(client.get_rule(&owner, &domain).is_none());
+    }
 }

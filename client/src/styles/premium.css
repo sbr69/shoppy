@@ -110,10 +110,27 @@ body::before {
   z-index: 0;
   pointer-events: none;
   opacity: 0.42;
-  background-image: linear-gradient(90deg, rgba(44,41,37,0.026) 1px, transparent 1px), linear-gradient(rgba(44,41,37,0.02) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.72), transparent 72%);
+  background: radial-gradient(circle at 50% 0%, rgba(124,137,116,0.075), transparent 52%);
 }
+
+.app-error-boundary {
+  min-height: 100dvh;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 1rem;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 6vw, 5rem);
+}
+.app-error-boundary__eyebrow {
+  color: var(--terracotta-dark);
+  font: 500 0.72rem/1 var(--font-mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.app-error-boundary h1 { max-width: 520px; }
+.app-error-boundary p { max-width: 500px; }
 
 h1, h2, h3, h4 { color: var(--ink); font-family: var(--font-display); font-weight: 400; letter-spacing: -0.045em; }
 h1 { font-size: clamp(3rem, 7vw, 6.8rem); line-height: 0.9; }

@@ -11,8 +11,10 @@ import sitesRoutes from './routes/sites.routes.js';
 import purchasesRoutes from './routes/purchases.routes.js';
 import profileRoutes from './routes/profile.routes.js';
 import { reconcilePendingPurchases } from './services/payment.service.js';
+import { captureServerException, initializeObservability } from './services/observability.service.js';
 
 const app = express();
+initializeObservability();
 
 // ─── Security Headers ───
 app.use(helmet({
@@ -70,7 +72,11 @@ app.use('/api', (req, res) => {
 // ─── Error handler ───
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.message);
-  res.status(err.status || 500).json({
+  const status = err.status || 500;
+  if (status >= 500) {
+    captureServerException(err, { method: req.method, path: req.path, status, userId: req.user?.userId });
+  }
+  res.status(status).json({
     error: process.env.NODE_ENV === 'production'
       ? 'Internal server error'
       : err.message,

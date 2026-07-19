@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import api from '../../services/api';
 import { X } from '@phosphor-icons/react';
+import { captureClientException, trackProductEvent } from '../../services/observability';
 
 export default function ConnectSiteModal({ isOpen, onClose }) {
   const [siteUrl, setSiteUrl] = useState('');
@@ -54,8 +55,10 @@ export default function ConnectSiteModal({ isOpen, onClose }) {
         siteUrl: siteUrl.trim(),
         spendingCap,
       });
+      trackProductEvent('store_connection_started');
       window.location.assign(data.authorizationUrl);
     } catch (err) {
+      captureClientException(err, { feature: 'store_connection', status: err.response?.status || 0 });
       const msg = err.response?.data?.error || 'Failed to connect site';
       setError(msg);
     } finally {

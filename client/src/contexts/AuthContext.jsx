@@ -1,6 +1,7 @@
 // oxlint-disable react/only-export-components -- provider and consumer hook are an intentional context pair.
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
+import { identifyProductUser, resetProductUser, trackProductEvent } from '../services/observability';
 
 const AuthContext = createContext(null);
 
@@ -18,8 +19,10 @@ export function AuthProvider({ children }) {
       try {
         const payload = JSON.parse(atob(savedToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
         if (Number(payload.exp) * 1000 > Date.now()) {
+          const restoredUser = JSON.parse(savedUser);
           setToken(savedToken);
-          setUser(JSON.parse(savedUser));
+          setUser(restoredUser);
+          identifyProductUser(restoredUser?.id);
         } else {
           sessionStorage.removeItem('jarvispays_token');
           sessionStorage.removeItem('jarvispays_user');
@@ -44,6 +47,8 @@ export function AuthProvider({ children }) {
 
     setToken(data.token);
     setUser(data.user);
+    identifyProductUser(data.user?.id);
+    trackProductEvent('sign_in_completed');
 
     return data;
   }, []);
@@ -56,6 +61,8 @@ export function AuthProvider({ children }) {
     sessionStorage.removeItem('jarvispays_user');
     setToken(null);
     setUser(null);
+    trackProductEvent('sign_out_completed');
+    resetProductUser();
   }, []);
 
   const isAuthenticated = !!token;
