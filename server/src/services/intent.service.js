@@ -1,6 +1,6 @@
 import { generateText, parseJsonResponse } from './llm.service.js';
 
-const ACTIONS = new Set(['search', 'show_offer', 'confirm_purchase', 'confirm_batch', 'cancel', 'greeting', 'question', 'remember_preference', 'other']);
+const ACTIONS = new Set(['search', 'browse_alternatives', 'show_offer', 'confirm_purchase', 'confirm_batch', 'cancel', 'greeting', 'question', 'remember_preference', 'other']);
 
 function cleanList(value) {
   return Array.isArray(value)
@@ -20,6 +20,7 @@ function safeContext(context = {}) {
   const pending = context.pendingPurchase;
   const offer = context.continuationOffer;
   const batch = context.pendingBatch;
+  const task = context.shoppingTask;
   return {
     pendingPurchase: pending ? {
       state: ['selected', 'confirmed'].includes(pending.state) ? pending.state : 'unknown',
@@ -58,6 +59,22 @@ function safeContext(context = {}) {
     pendingBatch: batch?.id && ['selected', 'confirmed'].includes(batch.state)
       ? { id: String(batch.id), state: batch.state, itemCount: Number(batch.itemCount) || 0, totalXlm: Number.isFinite(Number(batch.totalXlm)) ? Number(batch.totalXlm) : null }
       : null,
+    shoppingTask: task?.goal?.product ? {
+      goal: {
+        rawQuery: String(task.goal.rawQuery || task.goal.product).slice(0, 1_000),
+        product: String(task.goal.product).slice(0, 300),
+        maxPrice: Number.isFinite(Number(task.goal.maxPrice)) ? Number(task.goal.maxPrice) : null,
+        minPrice: Number.isFinite(Number(task.goal.minPrice)) ? Number(task.goal.minPrice) : null,
+        currency: task.goal.currency ? String(task.goal.currency).slice(0, 16) : null,
+        mustHave: cleanList(task.goal.mustHave),
+        preferences: cleanList(task.goal.preferences),
+        exclusions: cleanList(task.goal.exclusions),
+        useCases: cleanList(task.goal.useCases),
+      },
+      shownProducts: Array.isArray(task.context?.seenProducts) ? task.context.seenProducts.slice(0, 12).map((item) => ({
+        name: String(item?.name || '').slice(0, 240), category: item?.category ? String(item.category).slice(0, 120) : null,
+      })).filter((item) => item.name) : [],
+    } : null,
   };
 }
 
@@ -108,6 +125,10 @@ export function normalizeSemanticIntent(parsed, context = {}) {
     };
   }
 
+  if (parsed.action === 'browse_alternatives' && !state.shoppingTask) {
+    return { action: 'other', clarification: 'I do not have an active shopping request to find alternatives for. Tell me what you would like to find.' };
+  }
+
   return {
     ...parsed,
     product: typeof parsed.product === 'string' ? parsed.product.trim() : null,
@@ -131,6 +152,7 @@ export function normalizeSemanticIntent(parsed, context = {}) {
       ? [...new Set(parsed.purchaseIntentIds.filter((id) => typeof id === 'string' && state.shownProducts.some((item) => item.purchaseIntentId === id)))].slice(0, 3)
       : [],
     continuationOffer: state.continuationOffer,
+    shoppingTask: state.shoppingTask,
     questionType: ['compare_ratings', 'review_summary', 'product_detail', 'other'].includes(parsed.questionType) ? parsed.questionType : 'other',
     questionProduct: typeof parsed.questionProduct === 'string' ? parsed.questionProduct.trim().slice(0, 300) : null,
     questionProductId: typeof parsed.questionProductId === 'string' && state.shownProducts.some((item) => item.purchaseIntentId === parsed.questionProductId)
@@ -161,7 +183,7 @@ ${JSON.stringify(String(message).slice(0, 2000))}
 
 Return exactly one JSON object with this schema:
 {
-  "action": "search" | "show_offer" | "confirm_purchase" | "confirm_batch" | "cancel" | "greeting" | "question" | "remember_preference" | "other",
+  "action": "search" | "browse_alternatives" | "show_offer" | "confirm_purchase" | "confirm_batch" | "cancel" | "greeting" | "question" | "remember_preference" | "other",
   "product": "string or null",
   "maxPrice": "number or null",
   "minPrice": "number or null",
@@ -186,6 +208,7 @@ Decision rules:
 1. A request to buy, get, order, look for, compare, replace, or find a new item is always "search". It must never create a payment.
 2. Use "confirm_purchase" only when there is a pendingPurchase and the user clearly gives consent for that exact pending step. If state is "selected", it means prepare the merchant checkout; if it is "confirmed", it means approve its exact quoted amount.
 3. A change to product, price, quantity, requirements, or store is a new "search", even if a product is pending.
+3a. If shoppingTask exists and the user asks for another option, similar product, alternatives, a different one, or refers back to the current product category without changing requirements, use "browse_alternatives". It must reuse the shoppingTask goal and exclude products already shown. Do not turn this into a new generic search.
 4. Use "cancel" only when the user means to abandon the pending purchase.
 5. Infer the real product category, use case, constraints, synonyms, and likely merchant-search phrasings from meaning. Put uses such as "work calls", "gym", or "travel" in useCases. Preserve uncertainty rather than inventing brands, specifications, or needs.
 6. A broad discovery request such as "find a gift" or "browse desk accessories" is still a search. Set product to the broad category (for example "gift" or "desk accessories") rather than asking the user to repeat it. Preserve the uncertainty in clarification if it materially affects the recommendation.

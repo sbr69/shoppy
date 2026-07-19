@@ -11,6 +11,7 @@ import { deliveryAddress, getProfile } from './profile.service.js';
 import { cacheAuthorizedProducts, retrieveSemanticCandidates } from './catalog.service.js';
 import { getShoppingPreferences, saveShoppingPreferences } from './shopping-preference.service.js';
 import { generateText, parseJsonResponse } from './llm.service.js';
+import { getShoppingTask, markShoppingTask, saveShoppingTask, taskGoalToIntent, taskSeenProductKeys } from './shopping-task.service.js';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
 const normalizedCurrency = (value) => String(value || '').trim().toUpperCase();
@@ -212,10 +213,11 @@ async function handleQuestion(userId, sessionId, intent) {
 
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
-  const [pendingRows, recentMessages, userPreferences] = await Promise.all([
+  const [pendingRows, recentMessages, userPreferences, shoppingTask] = await Promise.all([
     db`select id, state, product_json, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') order by updated_at desc limit 3`,
     db`select role, content, metadata from messages where session_id = ${sessionId} order by created_at asc`,
     getShoppingPreferences(userId),
+    getShoppingTask(userId, sessionId),
   ]);
   const [pendingBatch] = await db`
     select b.*, count(i.id)::int as item_count from purchase_batches b
@@ -244,6 +246,7 @@ export async function processMessage(userId, sessionId, message, googleSub) {
     userPreferences,
     shownProducts,
     continuationOffer: lastContinuationOffer(recentMessages),
+    shoppingTask,
     pendingBatch: pendingBatch ? { id: pendingBatch.id, state: pendingBatch.state, itemCount: pendingBatch.item_count, totalXlm: pendingBatch.total_xlm } : null,
   });
   // Product cards and their generated commands are structured UI references.
@@ -258,6 +261,12 @@ export async function processMessage(userId, sessionId, message, googleSub) {
   }
   let response;
   if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
+  else if (intent.action === 'browse_alternatives') {
+    const activeGoal = taskGoalToIntent(shoppingTask);
+    response = activeGoal
+      ? await handleSearch(userId, sessionId, activeGoal, { shoppingTask, alternativesOnly: true })
+      : { type: 'text', content: '**No active search to continue**\n\nTell me what you would like to find.' };
+  }
   else if (intent.action === 'show_offer') response = await handleContinuationOffer(userId, sessionId, intent);
   else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
   else if (intent.action === 'confirm_batch') response = await handleBatchConfirmation(userId, sessionId, googleSub, intent.purchaseIntentIds?.length ? intent.purchaseIntentIds : null, pendingBatch?.id || null);
@@ -274,12 +283,16 @@ export async function processMessage(userId, sessionId, message, googleSub) {
   return { id: saved.id, ...response };
 }
 
-async function handleSearch(userId, sessionId, intent) {
+async function handleSearch(userId, sessionId, intent, { shoppingTask = null, alternativesOnly = false } = {}) {
   const db = getDb();
   // A fresh discovery replaces unresolved suggestions from this chat. This
   // keeps a plain “buy it” from ever becoming ambiguous across old results.
-  await db`update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now()
-    where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
+  if (!alternativesOnly) {
+    await db`update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now()
+      where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
+    await db`update purchase_batches set state = 'cancelled', updated_at = now()
+      where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
+  }
   await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'running', detail: 'Searching authorized stores.' });
   const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
   if (!sites.length) {
@@ -315,8 +328,10 @@ async function handleSearch(userId, sessionId, intent) {
   // immediately rather than only on the user's next message.
   if (!cachedProducts.length && products.length) cachedProducts = await retrieveSemanticCandidates(sites.map((site) => site.id), intent).catch(() => []);
   const semanticByProduct = new Map(cachedProducts.map((product) => [`${product.siteId}:${product.id}`, product.semanticScore]));
+  const previouslyShown = alternativesOnly ? taskSeenProductKeys(shoppingTask) : new Set();
   products = products
     .filter((product) => product.inStock
+      && !previouslyShown.has(`${product.siteId}:${product.id}`)
       && (!isCatalogCurrencyBudget(intent, product) || Number(product.price) <= intent.maxPrice)
       && (!intent.minPrice || !isCatalogCurrencyBudget(intent, product) || Number(product.price) >= intent.minPrice))
     .map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
@@ -329,12 +344,25 @@ async function handleSearch(userId, sessionId, intent) {
       await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'Merchant authorization could not be refreshed.' });
       return { type: 'text', content: '**Store connection needs renewal**\n\nI could not refresh this store’s authorization, so I did not treat the catalog as empty. Reconnect the store to restore secure search and checkout access. No funds moved.' };
     }
+    if (alternativesOnly) {
+      const shown = Array.isArray(shoppingTask?.context?.seenProducts) ? shoppingTask.context.seenProducts : [];
+      const current = shown[0]?.name ? ` **${shown[0].name}** remains the only live related listing I found.` : '';
+      await saveShoppingTask(userId, sessionId, { goal: intent, context: { candidates: [], seenProducts: shown, lastAction: 'alternatives_exhausted' } });
+      return { type: 'text', content: `**No other matching option**\n\nI checked the live catalog again for alternatives to your current request.${current} I have not changed your selection or prepared a checkout.` };
+    }
+    await saveShoppingTask(userId, sessionId, { goal: intent, context: { candidates: [], seenProducts: [], lastAction: 'search_empty' } });
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
     return { type: 'text', content: `**No live result found**\n\nI searched your authorized stores for **${intent.product}**, but none returned an in-stock match. No funds moved.` };
   }
   const { bestMatch, nearestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
   if (!bestMatch || !site) {
+    const seenProducts = alternativesOnly && Array.isArray(shoppingTask?.context?.seenProducts) ? shoppingTask.context.seenProducts : [];
+    await saveShoppingTask(userId, sessionId, { goal: intent, context: { candidates: products, seenProducts, lastAction: alternativesOnly ? 'alternatives_no_match' : 'search_no_match' } });
+    if (alternativesOnly) {
+      const current = seenProducts[0]?.name ? ` **${seenProducts[0].name}** is still the closest live match.` : '';
+      return { type: 'text', content: `**No other reliable option**\n\nI kept your original request and checked the live catalog for another suitable option.${current} I will not substitute an unrelated product.` };
+    }
     return {
       type: 'text',
       content: noCredibleMatchMessage(intent, products, nearestMatch),
@@ -364,6 +392,11 @@ async function handleSearch(userId, sessionId, intent) {
     return { product: candidate, purchaseIntentId: created.id };
   }));
   const primarySelection = createdIntents[0];
+  const priorSeen = alternativesOnly && Array.isArray(shoppingTask?.context?.seenProducts) ? shoppingTask.context.seenProducts : [];
+  const seenProducts = [...priorSeen, ...selectedCandidates]
+    .filter((product, index, all) => all.findIndex((item) => item.siteId === product.siteId && item.id === product.id) === index)
+    .slice(-24);
+  await saveShoppingTask(userId, sessionId, { goal: intent, context: { candidates: products, seenProducts, lastAction: alternativesOnly ? 'alternatives' : 'search' } });
   await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: primarySelection.purchaseIntentId, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), queries } });
   const alternativeNote = createdIntents.length > 1 ? ` I found ${createdIntents.length - 1} additional option${createdIntents.length === 2 ? '' : 's'} below so you can choose the one you prefer.` : '';
   const budgetNote = normalizedCurrency(intent.currency) === 'XLM' && requestedBudget ? ` Your ${requestedBudget.amount} XLM budget will be checked against the merchant’s final XLM checkout total before payment.` : '';
@@ -386,6 +419,18 @@ async function handleContinuationOffer(userId, sessionId, intent) {
     const [created] = await db`
       insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
       values (${userId}, ${sessionId}, ${site.id}, ${db.json({ ...product, siteId: site.id, agentRequest: { requestedBudget } })}, ${offer.quantity || 1}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
+    const previousSeen = Array.isArray(intent.shoppingTask?.context?.seenProducts) ? intent.shoppingTask.context.seenProducts : [];
+    await saveShoppingTask(userId, sessionId, {
+      goal: taskGoalToIntent(intent.shoppingTask) || {
+        rawQuery: offer.product.name, product: offer.product.name, maxPrice: requestedBudget?.amount || null,
+        currency: requestedBudget?.currency || null, quantity: offer.quantity || 1, searchQueries: [offer.product.name],
+      },
+      context: {
+        candidates: [product],
+        seenProducts: [...previousSeen, { ...product, siteId: site.id }],
+        lastAction: 'show_nearest_match',
+      },
+    });
     return {
       type: 'product_suggestion',
       content: `**Closest available match: ${product.name}**\n\nThis is the related listing you asked to see. It may not meet every part of your original request, so review it before checkout.\n\nSelect the card or say “buy ${product.name}” to verify the merchant total.`,
@@ -598,6 +643,7 @@ async function handleCancel(userId, sessionId) {
     }
   });
   await getDb()`update purchase_batches set state = 'cancelled', updated_at = now() where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
+  await markShoppingTask(userId, sessionId, 'cancelled');
   return { type: 'text', content: '**Selection cancelled**\n\nNo payment was made. You can start a new search whenever you are ready.' };
 }
 

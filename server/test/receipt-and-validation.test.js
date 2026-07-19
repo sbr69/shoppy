@@ -5,6 +5,7 @@ import { parseFiniteNonNegative, validateChatMessage, validateSiteUpdate } from 
 import { xlmToStroops } from '../src/services/soroban.service.js';
 import { normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
 import { availableCatalogCategories, noCredibleMatchMessage, paymentFailureDetail, resolveActiveProductReference, resolveActiveProductReferences } from '../src/services/agent.service.js';
+import { taskGoalToIntent, taskSeenProductKeys } from '../src/services/shopping-task.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -66,6 +67,24 @@ test('semantic follow-up questions stay scoped to products already shown', () =>
   assert.equal(normalizeSemanticIntent({ action: 'question', questionProductId: 'not-shown' }, {
     shownProducts: [{ purchaseIntentId: productId, name: 'Building Blocks Set' }],
   }).questionProductId, null);
+});
+
+test('semantic alternatives preserve the active shopping goal instead of starting a generic search', () => {
+  const task = {
+    goal: {
+      rawQuery: 'Find wireless audio under 300 XLM', product: 'wireless audio', maxPrice: 300, currency: 'XLM',
+      mustHave: ['wireless'], searchQueries: ['wireless audio', 'wireless headphones'], quantity: 1,
+    },
+    context: {
+      seenProducts: [{ id: 'sony-xm5', siteId: 'store-1', name: 'Sony WH-1000XM5 Wireless Headphones' }],
+    },
+  };
+  const intent = normalizeSemanticIntent({ action: 'browse_alternatives' }, { shoppingTask: task });
+  assert.equal(intent.action, 'browse_alternatives');
+  assert.equal(intent.shoppingTask.goal.product, 'wireless audio');
+  assert.deepEqual(taskGoalToIntent(task).searchQueries, ['wireless audio', 'wireless headphones']);
+  assert.deepEqual([...taskSeenProductKeys(task)], ['store-1:sony-xm5']);
+  assert.equal(normalizeSemanticIntent({ action: 'browse_alternatives' }).action, 'other');
 });
 
 test('active product cards resolve exact names and generated checkout references', () => {
