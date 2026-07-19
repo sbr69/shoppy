@@ -24,6 +24,34 @@ const readableCategory = (value) => String(value || '')
   .replace(/\b\w/g, (letter) => letter.toUpperCase())
   .trim();
 
+const normalizedText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const purchaseIntentIdPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
+
+/** Resolve an exact active card reference without relying on LLM wording. */
+export function resolveActiveProductReference(message, shownProducts = []) {
+  const id = String(message || '').match(purchaseIntentIdPattern)?.[0]?.toLowerCase();
+  const byId = id && shownProducts.find((product) => product.purchaseIntentId?.toLowerCase() === id);
+  if (byId) return byId.purchaseIntentId;
+  const incoming = normalizedText(message);
+  if (!incoming) return null;
+  const exactName = shownProducts.find((product) => {
+    const name = normalizedText(product.name);
+    return name.length >= 3 && (incoming === name || incoming.includes(name));
+  });
+  return exactName?.purchaseIntentId || null;
+}
+
+function lastContinuationOffer(messages) {
+  for (const message of [...messages].reverse()) {
+    if (message.role !== 'agent' || !message.metadata) continue;
+    const metadata = typeof message.metadata === 'string' ? (() => { try { return JSON.parse(message.metadata); } catch { return null; } })() : message.metadata;
+    if (metadata?.continuation?.kind === 'nearest_catalog_match' && metadata.continuation.product?.id) return metadata.continuation;
+    // A later agent response supersedes an earlier unselected offer.
+    if (metadata?.product || metadata?.purchaseIntentId) return null;
+  }
+  return null;
+}
+
 /** Return useful catalogue context without exposing an arbitrary product as a recommendation. */
 export function availableCatalogCategories(products, limit = 4) {
   const categories = new Map();
@@ -175,13 +203,21 @@ export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
   const [pendingRows, recentMessages, userPreferences] = await Promise.all([
     db`select id, state, product_json, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') order by updated_at desc limit 3`,
-    db`select role, content from messages where session_id = ${sessionId} order by created_at asc`,
+    db`select role, content, metadata from messages where session_id = ${sessionId} order by created_at asc`,
     getShoppingPreferences(userId),
   ]);
   await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
   await db`update chat_sessions set title = case when title = 'New shopping chat' then left(${message}, 72) else title end, updated_at = now() where id = ${sessionId}`;
   const pending = pendingRows[0];
-  const intent = await parseIntent(message, {
+  const shownProducts = pendingRows.map((row) => ({
+    purchaseIntentId: row.id,
+    name: row.product_json?.name,
+    brand: row.product_json?.brand,
+    category: row.product_json?.category,
+    rating: row.product_json?.rating,
+    reviewCount: row.product_json?.reviewCount,
+  }));
+  let intent = await parseIntent(message, {
     pendingPurchase: pending ? {
       state: pending.state,
       productName: pending.product_json?.name,
@@ -190,17 +226,19 @@ export async function processMessage(userId, sessionId, message, googleSub) {
     } : null,
     recentMessages,
     userPreferences,
-    shownProducts: pendingRows.map((row) => ({
-      purchaseIntentId: row.id,
-      name: row.product_json?.name,
-      brand: row.product_json?.brand,
-      category: row.product_json?.category,
-      rating: row.product_json?.rating,
-      reviewCount: row.product_json?.reviewCount,
-    })),
+    shownProducts,
+    continuationOffer: lastContinuationOffer(recentMessages),
   });
+  // Product cards and their generated commands are structured UI references.
+  // Resolve them locally so a model can never turn “buy Remote Control Car”
+  // into an unrelated fresh search or lose an exact selected card.
+  const referencedIntentId = resolveActiveProductReference(message, shownProducts);
+  if (referencedIntentId && intent.action !== 'question' && intent.action !== 'cancel') {
+    intent = { ...intent, action: 'confirm_purchase', purchaseIntentId: referencedIntentId };
+  }
   let response;
   if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
+  else if (intent.action === 'show_offer') response = await handleContinuationOffer(userId, sessionId, intent);
   else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
   else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
   else if (intent.action === 'remember_preference') {
@@ -268,7 +306,18 @@ async function handleSearch(userId, sessionId, intent) {
   const { bestMatch, nearestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
   if (!bestMatch || !site) {
-    return { type: 'text', content: noCredibleMatchMessage(intent, products, nearestMatch) };
+    return {
+      type: 'text',
+      content: noCredibleMatchMessage(intent, products, nearestMatch),
+      metadata: nearestMatch ? {
+        continuation: {
+          kind: 'nearest_catalog_match',
+          product: nearestMatch,
+          requestedBudget: intent.maxPrice ? { amount: intent.maxPrice, currency: normalizedCurrency(intent.currency) || null } : null,
+          quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100),
+        },
+      } : null,
+    };
   }
   const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
   const requestedBudget = intent.maxPrice ? { amount: intent.maxPrice, currency: normalizedCurrency(intent.currency) || null } : null;
@@ -290,6 +339,33 @@ async function handleSearch(userId, sessionId, intent) {
   const alternativeNote = createdIntents.length > 1 ? ` I found ${createdIntents.length - 1} additional option${createdIntents.length === 2 ? '' : 's'} below so you can choose the one you prefer.` : '';
   const budgetNote = normalizedCurrency(intent.currency) === 'XLM' && requestedBudget ? ` Your ${requestedBudget.amount} XLM budget will be checked against the merchant’s final XLM checkout total before payment.` : '';
   return { type: 'product_suggestion', content: `**Recommended: ${bestMatch.name}**\n\n${reasoning}${alternativeNote}${budgetNote}\n\nSelect a product card to verify its checkout.`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
+}
+
+/** Display a previously mentioned near-match only after the user explicitly asks for it. */
+async function handleContinuationOffer(userId, sessionId, intent) {
+  const offer = intent.continuationOffer;
+  if (!offer?.product) return { type: 'text', content: '**No product to show**\n\nTell me what you would like to find.' };
+  const db = getDb();
+  const [site] = await db`select * from connected_sites where id = ${offer.product.siteId} and user_id = ${userId} and status = 'active'`;
+  if (!site) return { type: 'text', content: '**Store connection unavailable**\n\nThat store is no longer authorized. Connect it again before reviewing this item.' };
+  try {
+    const liveProducts = await new EcommerceAdapter(site).searchProducts(offer.product.name, {});
+    const product = liveProducts.find((candidate) => candidate.id === offer.product.id) || liveProducts.find((candidate) => normalizedText(candidate.name) === normalizedText(offer.product.name));
+    if (!product?.inStock) return { type: 'text', content: `**That item is no longer available**\n\n**${offer.product.name}** is not currently in stock. I have not prepared a checkout.` };
+    const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
+    const requestedBudget = offer.requestedBudget || null;
+    const [created] = await db`
+      insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
+      values (${userId}, ${sessionId}, ${site.id}, ${db.json({ ...product, siteId: site.id, agentRequest: { requestedBudget } })}, ${offer.quantity || 1}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
+    return {
+      type: 'product_suggestion',
+      content: `**Closest available match: ${product.name}**\n\nThis is the related listing you asked to see. It may not meet every part of your original request, so review it before checkout.\n\nSelect the card or say “buy ${product.name}” to verify the merchant total.`,
+      metadata: { product: { ...product, siteId: site.id }, alternatives: [], reasoning: 'Closest related listing from your authorized store.', purchaseIntentId: created.id, quantity: offer.quantity || 1, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } },
+    };
+  } catch (error) {
+    console.warn('Continuation offer refresh failed:', error.message);
+    return { type: 'text', content: `**Could not refresh that listing**\n\nI could not verify current availability for **${offer.product.name}**, so I have not prepared a checkout.` };
+  }
 }
 
 async function findIntent(userId, sessionId, requestedId) {
