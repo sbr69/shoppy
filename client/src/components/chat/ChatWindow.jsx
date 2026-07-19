@@ -167,6 +167,20 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
               onSkip={handleSkip}
               historical={msg.historical}
             />
+            {(msg.metadata.alternatives || []).map((alternative) => {
+              const product = alternative.product || alternative;
+              if (!product?.id) return null;
+              return (
+                <ProductCard
+                  key={alternative.purchaseIntentId || product.id}
+                  product={product}
+                  reasoning="Alternative option"
+                  onConfirm={() => handleConfirmPurchase(alternative.purchaseIntentId)}
+                  onSkip={handleSkip}
+                  historical={msg.historical || !alternative.purchaseIntentId}
+                />
+              );
+            })}
           </div>
         </div>
       );

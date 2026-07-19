@@ -12,7 +12,7 @@ export async function rankProducts(products, intent) {
   }
 
   const prompt = `You are a smart shopping assistant. The user wants: "${intent.rawQuery}"
-${intent.maxPrice ? `Budget: max ${intent.currency || 'INR'} ${intent.maxPrice}` : ''}
+${intent.maxPrice ? `Requested budget: max ${intent.currency || 'unspecified currency'} ${intent.maxPrice}. Catalog prices may use a different currency; never claim a product is within budget unless the displayed product currency matches. A budget in XLM is verified only from the merchant checkout total.` : ''}
 ${intent.mustHave?.length ? `Must have: ${intent.mustHave.join(', ')}` : ''}
 ${intent.preferences?.length ? `Nice to have: ${intent.preferences.join(', ')}` : ''}
 ${intent.exclusions?.length ? `Must avoid: ${intent.exclusions.join(', ')}` : ''}
@@ -36,6 +36,7 @@ Pick the BEST product for the user. Consider:
 2. Compare meaning, use case, attributes, and product descriptions—not only overlapping words.
 3. Prefer stronger ratings/value only after relevance.
 4. Do not claim an attribute that is missing from the merchant data.
+5. When at least two reasonable candidates exist, always return one or two distinct alternativeIndexes. Leave it empty only when no other candidate is genuinely relevant.
 
 Respond with JSON:
 {

@@ -12,6 +12,11 @@ import { cacheAuthorizedProducts, retrieveSemanticCandidates } from './catalog.s
 import { getShoppingPreferences, saveShoppingPreferences } from './shopping-preference.service.js';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
+const normalizedCurrency = (value) => String(value || '').trim().toUpperCase();
+const isCatalogCurrencyBudget = (intent, product) => Boolean(intent.maxPrice && intent.currency && normalizedCurrency(intent.currency) === normalizedCurrency(product.currency));
+const liveSearchFilters = (intent) => normalizedCurrency(intent.currency) === 'XLM'
+  ? { maxPrice: null, minPrice: null }
+  : { maxPrice: intent.maxPrice, minPrice: intent.minPrice };
 
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
@@ -50,6 +55,10 @@ export async function processMessage(userId, sessionId, message, googleSub) {
 
 async function handleSearch(userId, sessionId, intent) {
   const db = getDb();
+  // A fresh discovery replaces unresolved suggestions from this chat. This
+  // keeps a plain “buy it” from ever becoming ambiguous across old results.
+  await db`update purchase_intents set state = 'cancelled', reserved_xlm = 0, updated_at = now()
+    where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
   await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'running', detail: 'Searching authorized stores.' });
   const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
   if (!sites.length) {
@@ -61,15 +70,16 @@ async function handleSearch(userId, sessionId, intent) {
   // Cached semantic candidates and live merchant searches run together. The
   // merchant response remains authoritative for stock and checkout.
   const semanticCandidates = retrieveSemanticCandidates(sites.map((site) => site.id), intent).catch(() => []);
+  const catalogFilters = liveSearchFilters(intent);
   const results = await Promise.allSettled([
     ...sites.flatMap((site) => queries.map(async (query) =>
-      (await new EcommerceAdapter(site).searchProducts(query, { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
+      (await new EcommerceAdapter(site).searchProducts(query, catalogFilters))
         .map((product) => ({ ...product, siteId: site.id, retrievalQuery: query })),
     )),
     // A bounded browse verifies the current merchant catalogue. Cached vectors
     // can improve recall, but never make a stale product purchasable.
     ...sites.map(async (site) =>
-      (await new EcommerceAdapter(site).searchProducts('', { maxPrice: intent.maxPrice, minPrice: intent.minPrice }))
+      (await new EcommerceAdapter(site).searchProducts('', catalogFilters))
         .map((product) => ({ ...product, siteId: site.id, retrievalQuery: 'catalog browse' })),
     ),
   ]);
@@ -85,7 +95,9 @@ async function handleSearch(userId, sessionId, intent) {
   if (!cachedProducts.length && products.length) cachedProducts = await retrieveSemanticCandidates(sites.map((site) => site.id), intent).catch(() => []);
   const semanticByProduct = new Map(cachedProducts.map((product) => [`${product.siteId}:${product.id}`, product.semanticScore]));
   products = products
-    .filter((product) => product.inStock && (intent.maxPrice === null || Number(product.price) <= intent.maxPrice) && (intent.minPrice === null || Number(product.price) >= intent.minPrice))
+    .filter((product) => product.inStock
+      && (!isCatalogCurrencyBudget(intent, product) || Number(product.price) <= intent.maxPrice)
+      && (!intent.minPrice || !isCatalogCurrencyBudget(intent, product) || Number(product.price) >= intent.minPrice))
     .map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
   if (!products.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
@@ -93,21 +105,37 @@ async function handleSearch(userId, sessionId, intent) {
   }
   const { bestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
-  if (!bestMatch || !site) return { type: 'text', content: `I found catalog items, but none were a safe semantic fit for “${intent.rawQuery}”. I will not guess or prepare a checkout. Try adding one preference or a different budget.` };
+  if (!bestMatch || !site) {
+    const availablePreview = [...new Set(products.map((product) => product.name))].slice(0, 4).join(', ');
+    return { type: 'text', content: `I could not find a credible match for “${intent.rawQuery}” in the live catalog, so I will not guess or prepare a checkout. This store currently has items such as ${availablePreview || 'other unrelated products'}. Try a different category or connect a store that carries the item you need.` };
+  }
   const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
-  const [created] = await db`
-    insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
-    values (${userId}, ${sessionId}, ${site.id}, ${db.json(bestMatch)}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
-  await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: created.id, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: created.quantity, queries } });
-  const alternativeNote = alternatives.length ? ` I also found ${alternatives.map((product) => product.name).join(' and ')} as ${alternatives.length === 1 ? 'an alternative' : 'alternatives'}.` : '';
-  return { type: 'product_suggestion', content: `Best match: ${bestMatch.name} at ${site.site_name}. ${reasoning}${alternativeNote} It is live and in stock. Review it when you are ready; I will only verify the merchant total after your first approval, and I will ask again before any payment.`, metadata: { product: bestMatch, alternatives, reasoning, purchaseIntentId: created.id, quantity: created.quantity, expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
+  const requestedBudget = intent.maxPrice ? { amount: intent.maxPrice, currency: normalizedCurrency(intent.currency) || null } : null;
+  const fallbackAlternatives = products
+    .filter((candidate) => candidate.siteId !== bestMatch.siteId || candidate.id !== bestMatch.id)
+    .sort((a, b) => (Number(b.semanticScore) || Number(b.rating) || 0) - (Number(a.semanticScore) || Number(a.rating) || 0))
+    .slice(0, 2);
+  const selectedCandidates = [bestMatch, ...(alternatives.length ? alternatives : fallbackAlternatives)]
+    .filter((candidate, index, all) => all.findIndex((item) => item.siteId === candidate.siteId && item.id === candidate.id) === index).slice(0, 3);
+  const createdIntents = await Promise.all(selectedCandidates.map(async (candidate) => {
+    const candidateSite = sites.find((item) => item.id === candidate.siteId);
+    const [created] = await db`
+      insert into purchase_intents (user_id, session_id, site_id, product_json, quantity, state, idempotency_key, expires_at)
+      values (${userId}, ${sessionId}, ${candidateSite.id}, ${db.json({ ...candidate, agentRequest: { requestedBudget } })}, ${Math.min(Math.max(Number(intent.quantity) || 1, 1), 100)}, 'selected', ${uuidv4()}, ${expiry}) returning *`;
+    return { product: candidate, purchaseIntentId: created.id };
+  }));
+  const primarySelection = createdIntents[0];
+  await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: primarySelection.purchaseIntentId, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), queries } });
+  const alternativeNote = createdIntents.length > 1 ? ` I found ${createdIntents.length - 1} additional option${createdIntents.length === 2 ? '' : 's'} below so you can choose the one you prefer.` : '';
+  const budgetNote = normalizedCurrency(intent.currency) === 'XLM' && requestedBudget ? ` Your ${requestedBudget.amount} XLM budget will be checked against the merchant’s final XLM checkout total before payment.` : '';
+  return { type: 'product_suggestion', content: `Best match: ${bestMatch.name} at ${site.site_name}. ${reasoning}${alternativeNote}${budgetNote} All options shown are live and in stock. Select one to review its checkout; I will ask again before any payment.`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 
 async function findIntent(userId, sessionId, requestedId) {
   const db = getDb();
   if (requestedId) { const [intent] = await db`select * from purchase_intents where id = ${requestedId} and user_id = ${userId} and session_id = ${sessionId}`; return intent; }
-  const [intent] = await db`select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected','confirmed') order by updated_at desc limit 1`;
-  return intent;
+  const intents = await db`select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected','confirmed') order by updated_at desc limit 2`;
+  return intents.length === 1 ? intents[0] : null;
 }
 
 export function paymentFailureDetail(error) {
@@ -133,7 +161,7 @@ export function paymentFailureDetail(error) {
 async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   const db = getDb();
   const purchaseIntent = await findIntent(userId, sessionId, requestedId);
-  if (!purchaseIntent) return { type: 'text', content: 'There is no purchase awaiting confirmation in this chat.' };
+  if (!purchaseIntent) return { type: 'text', content: 'Choose one of the product cards first so I know exactly which item to prepare. I will not guess between multiple options.' };
   if (new Date(purchaseIntent.expires_at).getTime() <= Date.now()) { await markIntentState(purchaseIntent.id, 'expired', { reserved_xlm: 0 }); return { type: 'text', content: 'That selection expired. Please search again.' }; }
   let [site] = await db`select * from connected_sites where id = ${purchaseIntent.site_id} and user_id = ${userId} and status = 'active'`;
   if (!site) return { type: 'text', content: 'The selected store is no longer active or authorized.' };
@@ -158,6 +186,11 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
     try {
       await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'checkout', status: 'running', detail: 'Verifying merchant checkout total.' });
       const checkout = await adapter.prepareCheckout(product, purchaseIntent.quantity, purchaseIntent.idempotency_key, deliveryAddress(profileState.profile));
+      const requestedBudget = product.agentRequest?.requestedBudget;
+      if (requestedBudget?.currency === 'XLM' && Number(checkout.xlmAmount) > Number(requestedBudget.amount)) {
+        await markIntentState(purchaseIntent.id, 'cancelled', { reserved_xlm: 0 });
+        return { type: 'text', content: `The verified merchant total is ${Number(checkout.xlmAmount).toFixed(7)} XLM, which exceeds your ${Number(requestedBudget.amount).toFixed(7)} XLM budget. No payment was made. Choose another option or ask me to search again.` };
+      }
       if (Number(checkout.xlmAmount) > Number(site.per_transaction_cap)) return { type: 'purchase_failed', content: 'The verified total exceeds this store’s on-chain per-transaction limit.' };
       await markIntentState(purchaseIntent.id, 'confirmed', { merchant_order_id: checkout.orderId, price_xlm: Number(checkout.xlmAmount), final_total_json: checkout });
       await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'checkout', status: 'completed', detail: `Merchant order ${checkout.orderId} reserved.`, metadata: { amountXlm: Number(checkout.xlmAmount) } });

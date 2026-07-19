@@ -1,6 +1,7 @@
 import { Storefront, ShoppingBag, Star, Brain, ShoppingCart, X } from '@phosphor-icons/react';
 
 export default function ProductCard({ product, reasoning, onConfirm, onSkip, historical = false }) {
+  const pricePrefix = product.currency === 'INR' ? '₹' : product.currency === 'USD' ? '$' : `${product.currency || ''} `;
   return (
     <div className="product-card">
       <div className="product-card-image">
@@ -22,7 +23,7 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip, his
 
         <div className="product-card-meta">
           <span className="product-card-price">
-            {product.currency === 'INR' ? '₹' : product.currency || '₹'}
+            {pricePrefix}
             {product.price?.toLocaleString()}
           </span>
           {product.rating && (

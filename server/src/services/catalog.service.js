@@ -41,7 +41,12 @@ export async function retrieveSemanticCandidates(siteIds, intent) {
   const rows = await db`select site_id, product_json, embedding from catalog_products where site_id in ${db(siteIds)} and embedding is not null and last_seen_at > now() - interval '7 days' limit 400`;
   return rows
     .map((row) => ({ ...row.product_json, siteId: row.site_id, semanticScore: dot(queryEmbedding, row.embedding || []) }))
-    .filter((product) => product.semanticScore >= 0.38 && product.inStock && (!intent.maxPrice || Number(product.price) <= intent.maxPrice) && (!intent.minPrice || Number(product.price) >= intent.minPrice))
+    .filter((product) => {
+      const budgetApplies = intent.currency && String(intent.currency).toUpperCase() === String(product.currency || '').toUpperCase();
+      return product.semanticScore >= 0.38 && product.inStock
+        && (!budgetApplies || !intent.maxPrice || Number(product.price) <= intent.maxPrice)
+        && (!budgetApplies || !intent.minPrice || Number(product.price) >= intent.minPrice);
+    })
     .sort((a, b) => b.semanticScore - a.semanticScore)
     .slice(0, 24);
 }
