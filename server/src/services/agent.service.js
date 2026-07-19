@@ -45,7 +45,7 @@ export function noCredibleMatchMessage(intent, products, nearestMatch = null) {
   const relatedText = nearestMatch
     ? ` The closest related listing is ${nearestMatch.name}${nearestMatch.category ? ` in ${readableCategory(nearestMatch.category)}` : ''}, but it is not a reliable fit for what you asked for, so I have not selected it.`
     : '';
-  return `I could not find a credible match for “${intent.rawQuery}” in the live catalog, so I will not guess or prepare a checkout.${relatedText}${categoryText} Try a different category or connect a store that carries the item you need.`;
+  return `**No reliable match yet**\n\nI could not find a credible live match for “${intent.rawQuery}”, so I have not selected an item or prepared a checkout.${relatedText}${categoryText}\n\n**Next step**\n\n- Try a different category or preference\n- Connect a store that carries the item you need`;
 }
 
 const questionProduct = (row) => ({ ...row.product_json, purchaseIntentId: row.id, siteId: row.site_id });
@@ -121,30 +121,30 @@ async function handleQuestion(userId, sessionId, intent) {
   const selected = await selectedQuestionProducts(userId, sessionId);
   if (intent.questionType === 'compare_ratings') {
     const rated = selected.filter((product) => numberOrNull(product.rating) !== null);
-    if (rated.length < 2) return { type: 'text', content: 'I need at least two currently shown products to compare their merchant ratings.' };
+    if (rated.length < 2) return { type: 'text', content: '**Rating comparison unavailable**\n\nI need at least two currently shown products to compare their merchant ratings.' };
     rated.sort((left, right) => numberOrNull(right.rating) - numberOrNull(left.rating)
       || (numberOrNull(right.reviewCount) || 0) - (numberOrNull(left.reviewCount) || 0));
     const best = rated[0];
     const comparison = rated.map((product) => `${product.name} (${ratingText(product)})`).join(', ');
-    return { type: 'text', content: `Of the options I just showed, **${best.name}** has the strongest merchant rating: **${ratingText(best)}**. Comparison: ${comparison}. This is a comparison only—select a product card when you want me to verify its checkout.` };
+    return { type: 'text', content: `**Best rated option**\n\n**${best.name}** has the strongest merchant rating: **${ratingText(best)}**.\n\n**Comparison**\n\n- ${comparison}\n\n**Next step**\n\nSelect a product card when you want me to verify its checkout. No order has been prepared.` };
   }
   if (intent.questionType === 'review_summary') {
     const product = await resolveQuestionProduct(userId, sessionId, intent);
-    if (!product) return { type: 'text', content: 'Tell me which product you want reviewed, or ask about one of the product cards currently shown.' };
+    if (!product) return { type: 'text', content: '**Which product should I review?**\n\nAsk about one of the product cards currently shown, or tell me its name.' };
     const db = getDb();
     const [site] = await db`select * from connected_sites where id = ${product.siteId} and user_id = ${userId} and status = 'active'`;
-    if (!site) return { type: 'text', content: 'That product’s store is no longer connected, so I cannot retrieve its reviews.' };
+    if (!site) return { type: 'text', content: '**Reviews unavailable**\n\nThat product’s store is no longer connected, so I cannot retrieve its reviews.' };
     try {
       const reviews = await new EcommerceAdapter(site).getProductReviews(product);
-      if (!reviews) return { type: 'text', content: `The merchant exposes ${ratingText(product)} for ${product.name}, but it has not published a review feed the agent can summarize.` };
-      if (!reviews.length) return { type: 'text', content: `The merchant exposes ${ratingText(product)} for ${product.name}, but there are no individual reviews available to summarize.` };
+      if (!reviews) return { type: 'text', content: `**Review details unavailable**\n\n**${product.name}** is rated **${ratingText(product)}**, but this merchant has not published individual reviews the agent can summarize.` };
+      if (!reviews.length) return { type: 'text', content: `**No individual reviews available**\n\n**${product.name}** is rated **${ratingText(product)}**, but there are no individual reviews to summarize.` };
       return { type: 'text', content: await summarizeReviews(product, reviews) };
     } catch (error) {
       console.warn('Merchant review retrieval failed:', error.message);
-      return { type: 'text', content: `I could not retrieve the merchant’s individual reviews for ${product.name}. Its listed rating is ${ratingText(product)}; no checkout has been prepared.` };
+      return { type: 'text', content: `**Could not retrieve reviews**\n\n**${product.name}** is listed at **${ratingText(product)}**. No checkout has been prepared.` };
     }
   }
-  return { type: 'text', content: 'Ask me to compare the products shown, check their ratings, or summarize reviews for a specific product.' };
+  return { type: 'text', content: '**I can help you decide**\n\n- Compare the products currently shown\n- Check their ratings\n- Summarize reviews for a specific item' };
 }
 
 export async function processMessage(userId, sessionId, message, googleSub) {
@@ -201,7 +201,7 @@ async function handleSearch(userId, sessionId, intent) {
   const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
   if (!sites.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No authorized stores are active.' });
-    return { type: 'text', content: 'I need an active store before I can search. Connect a store from the right-hand panel, complete its sign-in, then tell me what you need.' };
+    return { type: 'text', content: '**Connect a store first**\n\nI need an active store before I can search its live catalog.\n\n**Next step**\n\n- Connect a store from the right-hand panel\n- Complete its sign-in\n- Tell me what you need' };
   }
   const queries = retrievalQueries(intent);
   if (!queries.length) return { type: 'text', content: 'Tell me a little more about the product you want me to find.' };
@@ -239,7 +239,7 @@ async function handleSearch(userId, sessionId, intent) {
     .map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
   if (!products.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
-    return { type: 'text', content: `I searched your authorized stores for ${intent.product} using several meaning-based catalog queries, but none returned a live, in-stock match. I have not reserved an order or moved any funds.` };
+    return { type: 'text', content: `**No live result found**\n\nI searched your authorized stores for **${intent.product}** using several meaning-based catalog queries, but none returned an in-stock match.\n\n**Safe status**\n\n- No item selected\n- No order reserved\n- No funds moved` };
   }
   const { bestMatch, nearestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
@@ -265,7 +265,7 @@ async function handleSearch(userId, sessionId, intent) {
   await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: primarySelection.purchaseIntentId, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), queries } });
   const alternativeNote = createdIntents.length > 1 ? ` I found ${createdIntents.length - 1} additional option${createdIntents.length === 2 ? '' : 's'} below so you can choose the one you prefer.` : '';
   const budgetNote = normalizedCurrency(intent.currency) === 'XLM' && requestedBudget ? ` Your ${requestedBudget.amount} XLM budget will be checked against the merchant’s final XLM checkout total before payment.` : '';
-  return { type: 'product_suggestion', content: `Best match: ${bestMatch.name} at ${site.site_name}. ${reasoning}${alternativeNote}${budgetNote} All options shown are live and in stock. Select one to review its checkout; I will ask again before any payment.`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
+  return { type: 'product_suggestion', content: `**Best match found**\n\n**${bestMatch.name}** at **${site.site_name}**\n\n**Why it fits**\n\n${reasoning}${alternativeNote}${budgetNote}\n\n**Next step**\n\n- Review a product card below\n- Select one to verify its checkout\n- I will ask again before any payment`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 
 async function findIntent(userId, sessionId, requestedId) {
@@ -298,10 +298,10 @@ export function paymentFailureDetail(error) {
 async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   const db = getDb();
   const purchaseIntent = await findIntent(userId, sessionId, requestedId);
-  if (!purchaseIntent) return { type: 'text', content: 'Choose one of the product cards first so I know exactly which item to prepare. I will not guess between multiple options.' };
-  if (new Date(purchaseIntent.expires_at).getTime() <= Date.now()) { await markIntentState(purchaseIntent.id, 'expired', { reserved_xlm: 0 }); return { type: 'text', content: 'That selection expired. Please search again.' }; }
+  if (!purchaseIntent) return { type: 'text', content: '**Choose a product first**\n\nSelect one product card so I know exactly which item to prepare. I will not guess between multiple options.' };
+  if (new Date(purchaseIntent.expires_at).getTime() <= Date.now()) { await markIntentState(purchaseIntent.id, 'expired', { reserved_xlm: 0 }); return { type: 'text', content: '**Selection expired**\n\nThat product selection is no longer valid. Search again to receive current stock and pricing.' }; }
   let [site] = await db`select * from connected_sites where id = ${purchaseIntent.site_id} and user_id = ${userId} and status = 'active'`;
-  if (!site) return { type: 'text', content: 'The selected store is no longer active or authorized.' };
+  if (!site) return { type: 'text', content: '**Store connection unavailable**\n\nThe selected store is no longer active or authorized.' };
   const product = purchaseIntent.product_json;
   const profileState = await getProfile(userId);
   if (profileState.missing.length) {
@@ -326,12 +326,12 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
       const requestedBudget = product.agentRequest?.requestedBudget;
       if (requestedBudget?.currency === 'XLM' && Number(checkout.xlmAmount) > Number(requestedBudget.amount)) {
         await markIntentState(purchaseIntent.id, 'cancelled', { reserved_xlm: 0 });
-        return { type: 'text', content: `The verified merchant total is ${Number(checkout.xlmAmount).toFixed(7)} XLM, which exceeds your ${Number(requestedBudget.amount).toFixed(7)} XLM budget. No payment was made. Choose another option or ask me to search again.` };
+        return { type: 'text', content: `**Budget exceeded**\n\n**Verified total:** ${Number(checkout.xlmAmount).toFixed(7)} XLM\n**Your budget:** ${Number(requestedBudget.amount).toFixed(7)} XLM\n\n**Safe status**\n\n- No payment was made\n- Choose another option or ask me to search again` };
       }
       if (Number(checkout.xlmAmount) > Number(site.per_transaction_cap)) return { type: 'purchase_failed', content: 'The verified total exceeds this store’s on-chain per-transaction limit.' };
       await markIntentState(purchaseIntent.id, 'confirmed', { merchant_order_id: checkout.orderId, price_xlm: Number(checkout.xlmAmount), final_total_json: checkout });
       await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'checkout', status: 'completed', detail: `Merchant order ${checkout.orderId} reserved.`, metadata: { amountXlm: Number(checkout.xlmAmount) } });
-      return { type: 'purchase_ready', content: `The merchant reserved order ${checkout.orderId}. Final payment is ${Number(checkout.xlmAmount).toFixed(7)} XLM. Reply “buy it” once more to approve this exact amount.`, metadata: { product, purchaseIntentId: purchaseIntent.id, checkout } };
+      return { type: 'purchase_ready', content: `**Checkout ready for approval**\n\n**Order:** ${checkout.orderId}\n**Final payment:** ${Number(checkout.xlmAmount).toFixed(7)} XLM\n\n**Next step**\n\nReply **buy it** to approve this exact amount. Your wallet will not be charged until you give that approval.`, metadata: { product, purchaseIntentId: purchaseIntent.id, checkout } };
     } catch (error) {
       await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: purchaseIntent.id, stage: 'checkout', status: 'failed', detail: error.message });
       return { type: 'purchase_failed', content: `I could not prepare a verified merchant order: ${error.message}`, metadata: { product } };
@@ -365,7 +365,7 @@ async function handleCancel(userId, sessionId) {
       await tx`update purchase_approvals set state = 'expired' where user_id = ${userId} and purchase_intent_id in ${tx(intents.map((intent) => intent.id))} and state in ('prepared', 'authorized')`;
     }
   });
-  return { type: 'text', content: 'The pending selection was cancelled. No payment was made.' };
+  return { type: 'text', content: '**Selection cancelled**\n\nNo payment was made. You can start a new search whenever you are ready.' };
 }
 
 export async function getOrCreateSession(userId) {

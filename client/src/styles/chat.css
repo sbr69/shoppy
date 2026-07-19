@@ -691,6 +691,57 @@
   border-bottom-left-radius: var(--radius-sm);
 }
 
+.agent-message-format {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.agent-message-format h3,
+.agent-message-format p {
+  margin: 0;
+}
+
+.agent-message-format h3 {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.agent-message-format p {
+  color: var(--text-secondary);
+}
+
+.agent-message-format ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-message-format li {
+  position: relative;
+  padding-left: 14px;
+  color: var(--text-secondary);
+}
+
+.agent-message-format li::before {
+  content: '';
+  position: absolute;
+  top: 0.55em;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+
+.agent-message-format strong {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
 .message-time {
   font-size: 10px;
   color: var(--text-tertiary);
