@@ -1186,6 +1186,24 @@ button:disabled,
   color: var(--terracotta-dark);
 }
 
+.product-card-price-label {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--ink-soft);
+  font-family: var(--font-body);
+  font-size: 0.63rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.product-card-price-note {
+  margin: calc(var(--space-2) * -1) 0 var(--space-4);
+  color: var(--ink-soft);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
 .product-card-reasoning {
   color: var(--ink-soft);
   background: #f0f2e9;

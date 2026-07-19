@@ -97,6 +97,23 @@ test('cross-currency caps do not turn a semantic wireless-audio match into a no-
   assert.equal(chosen.budgetUnverified, true);
 });
 
+test('a comparable-currency cap cannot be bypassed by a model ranking response', () => {
+  const overBudget = { id: 'over-budget', name: 'Wireless Headphones', currency: 'XLM', price: 301, semanticScore: 0.98 };
+  const chosen = chooseRankedProduct({ bestIndex: 0, nearestIndex: 0, matchQuality: 0.99 }, [overBudget], {
+    rawQuery: 'wireless audio under 300 XLM', product: 'wireless audio', maxPrice: 300, currency: 'XLM',
+  });
+  assert.equal(chosen.bestMatch, null);
+  assert.equal(chosen.nearestMatch, overBudget);
+});
+
+test('a weak, unsupported semantic candidate is not promoted solely because currencies differ', () => {
+  const unrelated = { id: 'toy-car', name: 'Remote Control Car', currency: 'USD', price: 45, semanticScore: 0.12 };
+  const chosen = chooseRankedProduct({ bestIndex: null, nearestIndex: 0, matchQuality: 0.2 }, [unrelated], {
+    rawQuery: 'wireless audio under 300 XLM', product: 'wireless audio', maxPrice: 300, currency: 'XLM',
+  });
+  assert.equal(chosen.bestMatch, null);
+});
+
 test('active product cards resolve exact names and generated checkout references', () => {
   const carIntent = '48875677-7864-4c69-8f9e-605ffb16e6ff';
   const blockIntent = '8e7d154a-c7e0-4dcc-b98f-e46751af6114';

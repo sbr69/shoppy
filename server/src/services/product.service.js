@@ -4,6 +4,8 @@ const normalizedCurrency = (value) => String(value || '').trim().toUpperCase();
 const hasComparableCatalogBudget = (intent, product) => Boolean(
   intent?.maxPrice && intent?.currency && normalizedCurrency(intent.currency) === normalizedCurrency(product?.currency),
 );
+const exceedsComparableCatalogBudget = (intent, product) => hasComparableCatalogBudget(intent, product)
+  && Number(product?.price) > Number(intent.maxPrice);
 const hasSemanticRetrievalSupport = (product) => Number(product?.semanticScore) >= 0.38;
 
 function indexedProduct(products, index) {
@@ -20,7 +22,7 @@ export function chooseRankedProduct(parsed, products, intent) {
   const quality = Number(parsed?.matchQuality);
   const hasUsableQuality = !Number.isFinite(quality) || quality >= 0.4;
   const budgetUnverified = selected && intent?.maxPrice && !hasComparableCatalogBudget(intent, selected);
-  const mayUseSelected = selected && (hasUsableQuality || hasSemanticRetrievalSupport(selected));
+  const mayUseSelected = selected && !exceedsComparableCatalogBudget(intent, selected) && (hasUsableQuality || hasSemanticRetrievalSupport(selected));
 
   if (mayUseSelected) return { bestMatch: selected, nearestMatch, budgetUnverified };
 
@@ -28,7 +30,7 @@ export function chooseRankedProduct(parsed, products, intent) {
   // relationship. When the only uncertainty is a cross-currency budget, that
   // candidate is safe to show—not to pay—because checkout re-verifies XLM.
   const nearestBudgetUnverified = nearestMatch && intent?.maxPrice && !hasComparableCatalogBudget(intent, nearestMatch);
-  if (nearestMatch && nearestBudgetUnverified && (hasUsableQuality || hasSemanticRetrievalSupport(nearestMatch))) {
+  if (nearestMatch && !exceedsComparableCatalogBudget(intent, nearestMatch) && nearestBudgetUnverified && (hasUsableQuality || hasSemanticRetrievalSupport(nearestMatch))) {
     return { bestMatch: nearestMatch, nearestMatch, budgetUnverified: true };
   }
   return { bestMatch: null, nearestMatch, budgetUnverified: false };

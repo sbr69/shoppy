@@ -23,8 +23,8 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip, his
 
         <div className="product-card-meta">
           <span className="product-card-price">
-            {pricePrefix}
-            {product.price?.toLocaleString()}
+            <span className="product-card-price-label">Item price</span>
+            {pricePrefix}{product.price?.toLocaleString()}
           </span>
           {product.rating && (
             <span className="product-card-rating">
@@ -32,6 +32,9 @@ export default function ProductCard({ product, reasoning, onConfirm, onSkip, his
             </span>
           )}
         </div>
+        {product.currency === 'XLM' && (
+          <p className="product-card-price-note">Final XLM total, including any delivery charge, is confirmed before payment.</p>
+        )}
 
         {reasoning && (
           <div className="product-card-reasoning">

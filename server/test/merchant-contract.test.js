@@ -37,6 +37,8 @@ test('merchant contract supports search, verified checkout preparation, and idem
   try {
     const products = await adapter().searchProducts('headphones', { maxPrice: 500 });
     assert.equal(products.length, 1);
+    assert.equal(products[0].currency, 'XLM');
+    assert.equal(products[0].price, 299);
     const checkout = await adapter().prepareCheckout(products[0], 1, 'idempotency-1', 'Shipping address');
     assert.equal(checkout.orderId, 'checkout-1');
     const confirmation = await adapter().confirmPayment(checkout.orderId, txHash, 'idempotency-1');
@@ -66,4 +68,3 @@ test('merchant outage is surfaced as retryable confirmation failure without fabr
     globalThis.fetch = originalFetch;
   }
 });
-
