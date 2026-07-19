@@ -26,6 +26,7 @@ function RichAgentMessage({ content }) {
 
 export default function MessageBubble({ message, userAvatar }) {
   const isUser = message.role === 'user';
+  const isStructured = !isUser && /^\s*\*\*[^*]+\*\*/.test(String(message.content || ''));
   const time = message.created_at
     ? new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
@@ -40,7 +41,7 @@ export default function MessageBubble({ message, userAvatar }) {
         )}
       </div>
       <div className="message-content">
-        <div className={`message-bubble ${!isUser ? 'message-bubble--agent-format' : ''}`}>
+        <div className={`message-bubble ${!isUser ? 'message-bubble--agent-format' : ''} ${isStructured ? 'message-bubble--structured' : ''}`}>
           {isUser ? message.content : <RichAgentMessage content={message.content} />}
         </div>
         {time && <span className="message-time">{time}</span>}

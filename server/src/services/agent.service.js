@@ -45,7 +45,7 @@ export function noCredibleMatchMessage(intent, products, nearestMatch = null) {
   const relatedText = nearestMatch
     ? ` The closest related listing is ${nearestMatch.name}${nearestMatch.category ? ` in ${readableCategory(nearestMatch.category)}` : ''}, but it is not a reliable fit for what you asked for, so I have not selected it.`
     : '';
-  return `**No reliable match yet**\n\nI could not find a credible live match for “${intent.rawQuery}”, so I have not selected an item or prepared a checkout.${relatedText}${categoryText}\n\n**Next step**\n\n- Try a different category or preference\n- Connect a store that carries the item you need`;
+  return `**No reliable match**\n\nI could not find a credible live match for “${intent.rawQuery}”.${relatedText}${categoryText}\n\nTry a different category or connect a store that carries this item.`;
 }
 
 const questionProduct = (row) => ({ ...row.product_json, purchaseIntentId: row.id, siteId: row.site_id });
@@ -125,8 +125,8 @@ async function handleQuestion(userId, sessionId, intent) {
     rated.sort((left, right) => numberOrNull(right.rating) - numberOrNull(left.rating)
       || (numberOrNull(right.reviewCount) || 0) - (numberOrNull(left.reviewCount) || 0));
     const best = rated[0];
-    const comparison = rated.map((product) => `${product.name} (${ratingText(product)})`).join(', ');
-    return { type: 'text', content: `**Best rated option**\n\n**${best.name}** has the strongest merchant rating: **${ratingText(best)}**.\n\n**Comparison**\n\n- ${comparison}\n\n**Next step**\n\nSelect a product card when you want me to verify its checkout. No order has been prepared.` };
+    const comparison = rated.map((product) => `${product.name} — ${ratingText(product)}`).join('\n- ');
+    return { type: 'text', content: `**Best rated option**\n\n**${best.name}** — **${ratingText(best)}**\n\n- ${comparison}\n\nSelect a product card to verify its checkout.` };
   }
   if (intent.questionType === 'review_summary') {
     const product = await resolveQuestionProduct(userId, sessionId, intent);
@@ -151,7 +151,7 @@ export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
   const [pendingRows, recentMessages, userPreferences] = await Promise.all([
     db`select id, state, product_json, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed') order by updated_at desc limit 3`,
-    db`select role, content from messages where session_id = ${sessionId} order by created_at desc limit 4`,
+    db`select role, content from messages where session_id = ${sessionId} order by created_at asc`,
     getShoppingPreferences(userId),
   ]);
   await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
@@ -164,7 +164,7 @@ export async function processMessage(userId, sessionId, message, googleSub) {
       merchantOrderId: pending.merchant_order_id,
       finalAmountXlm: pending.price_xlm,
     } : null,
-    recentMessages: [...recentMessages].reverse(),
+    recentMessages,
     userPreferences,
     shownProducts: pendingRows.map((row) => ({
       purchaseIntentId: row.id,
@@ -181,11 +181,11 @@ export async function processMessage(userId, sessionId, message, googleSub) {
   else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
   else if (intent.action === 'remember_preference') {
     const preferences = await saveShoppingPreferences(userId, intent.preferenceUpdate);
-    response = { type: 'text', content: `I’ll remember those shopping preferences for future searches: ${[...preferences.likes, ...preferences.avoids.map((value) => `avoid ${value}`), ...preferences.useCases].join(', ') || 'no specific preference was provided'}.` };
+    response = { type: 'text', content: `**Preference saved**\n\n${[...preferences.likes, ...preferences.avoids.map((value) => `avoid ${value}`), ...preferences.useCases].join(', ') || 'No specific preference was provided.'}` };
   }
   else if (intent.action === 'question') response = await handleQuestion(userId, sessionId, intent);
-  else if (intent.action === 'greeting') response = { type: 'text', content: 'Hi! Tell me what you want to buy and I will search your authorized stores.' };
-  else response = { type: 'text', content: intent.clarification || 'Tell me what you want to find, or ask about the item already shown. I will always ask before placing a payment.' };
+  else if (intent.action === 'greeting') response = { type: 'text', content: '**How can I help?**\n\nTell me what you want to buy, compare, or review.' };
+  else response = { type: 'text', content: `**I need one detail**\n\n${intent.clarification || 'Tell me what you want to find, or ask about an item already shown.'}` };
   const [saved] = await db`insert into messages (session_id, role, content, metadata) values (${sessionId}, 'agent', ${response.content}, ${response.metadata ? db.json(response.metadata) : null}) returning id`;
   await db`update chat_sessions set updated_at = now() where id = ${sessionId}`;
   return { id: saved.id, ...response };
@@ -201,7 +201,7 @@ async function handleSearch(userId, sessionId, intent) {
   const sites = await db`select * from connected_sites where user_id = ${userId} and status = 'active'`;
   if (!sites.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No authorized stores are active.' });
-    return { type: 'text', content: '**Connect a store first**\n\nI need an active store before I can search its live catalog.\n\n**Next step**\n\n- Connect a store from the right-hand panel\n- Complete its sign-in\n- Tell me what you need' };
+    return { type: 'text', content: '**Connect a store first**\n\nConnect a store from the right-hand panel and complete its sign-in. Then I can search its live catalog.' };
   }
   const queries = retrievalQueries(intent);
   if (!queries.length) return { type: 'text', content: 'Tell me a little more about the product you want me to find.' };
@@ -239,7 +239,7 @@ async function handleSearch(userId, sessionId, intent) {
     .map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
   if (!products.length) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
-    return { type: 'text', content: `**No live result found**\n\nI searched your authorized stores for **${intent.product}** using several meaning-based catalog queries, but none returned an in-stock match.\n\n**Safe status**\n\n- No item selected\n- No order reserved\n- No funds moved` };
+    return { type: 'text', content: `**No live result found**\n\nI searched your authorized stores for **${intent.product}**, but none returned an in-stock match. No funds moved.` };
   }
   const { bestMatch, nearestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
@@ -265,7 +265,7 @@ async function handleSearch(userId, sessionId, intent) {
   await recordWorkflowEvent({ userId, sessionId, purchaseIntentId: primarySelection.purchaseIntentId, stage: 'search', status: 'completed', detail: `Selected ${bestMatch.name}.`, metadata: { siteId: site.id, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), queries } });
   const alternativeNote = createdIntents.length > 1 ? ` I found ${createdIntents.length - 1} additional option${createdIntents.length === 2 ? '' : 's'} below so you can choose the one you prefer.` : '';
   const budgetNote = normalizedCurrency(intent.currency) === 'XLM' && requestedBudget ? ` Your ${requestedBudget.amount} XLM budget will be checked against the merchant’s final XLM checkout total before payment.` : '';
-  return { type: 'product_suggestion', content: `**Best match found**\n\n**${bestMatch.name}** at **${site.site_name}**\n\n**Why it fits**\n\n${reasoning}${alternativeNote}${budgetNote}\n\n**Next step**\n\n- Review a product card below\n- Select one to verify its checkout\n- I will ask again before any payment`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
+  return { type: 'product_suggestion', content: `**Recommended: ${bestMatch.name}**\n\n${reasoning}${alternativeNote}${budgetNote}\n\nSelect a product card to verify its checkout.`, metadata: { product: primarySelection.product, alternatives: createdIntents.slice(1), reasoning, purchaseIntentId: primarySelection.purchaseIntentId, quantity: Math.min(Math.max(Number(intent.quantity) || 1, 1), 100), expiresAt: expiry, policy: { dailyCapXlm: Number(site.spending_cap), perTransactionCapXlm: Number(site.per_transaction_cap) } } };
 }
 
 async function findIntent(userId, sessionId, requestedId) {
@@ -305,7 +305,7 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   const product = purchaseIntent.product_json;
   const profileState = await getProfile(userId);
   if (profileState.missing.length) {
-    return { type: 'profile_required', content: `Before I can place a delivery order, open Settings → Personal details and complete: ${profileState.missing.join(', ')}. I will keep this product selected.`, metadata: { missing: profileState.missing, purchaseIntentId: purchaseIntent.id } };
+    return { type: 'profile_required', content: `**Delivery details required**\n\nComplete ${profileState.missing.join(', ')} in Settings → Personal details. Your selected product will remain saved.`, metadata: { missing: profileState.missing, purchaseIntentId: purchaseIntent.id } };
   }
   if (!site.policy_synced_at) {
     try {
@@ -387,7 +387,7 @@ export async function getOrCreateSession(userId) {
     return created;
   });
 }
-export async function getSessionMessages(sessionId, limit = 50) { return getDb()`select id, role, content, metadata, created_at from messages where session_id = ${sessionId} order by created_at asc limit ${limit}`; }
+export async function getSessionMessages(sessionId) { return getDb()`select id, role, content, metadata, created_at from messages where session_id = ${sessionId} order by created_at asc`; }
 export async function listSessions(userId) { return getDb()`select id, title, created_at, updated_at from chat_sessions where user_id=${userId} and archived_at is null order by updated_at desc limit 50`; }
 export async function createSession(userId) { const [session] = await getDb()`insert into chat_sessions (user_id) values (${userId}) returning *`; return session; }
 export async function getSessionForUser(userId, sessionId) { const [session] = await getDb()`select * from chat_sessions where id = ${sessionId} and user_id = ${userId} and archived_at is null`; return session || null; }

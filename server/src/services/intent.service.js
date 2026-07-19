@@ -25,10 +25,10 @@ function safeContext(context = {}) {
       merchantOrderId: pending.merchantOrderId ? String(pending.merchantOrderId).slice(0, 160) : null,
       finalAmountXlm: Number.isFinite(Number(pending.finalAmountXlm)) ? Number(pending.finalAmountXlm) : null,
     } : null,
-    recentMessages: Array.isArray(context.recentMessages)
-      ? context.recentMessages.slice(-4).map((item) => ({
+    conversation: Array.isArray(context.recentMessages)
+      ? context.recentMessages.map((item) => ({
         role: item?.role === 'agent' ? 'agent' : 'user',
-        content: String(item?.content || '').slice(0, 700),
+        content: String(item?.content || ''),
       }))
       : [],
     userPreferences: context.userPreferences && typeof context.userPreferences === 'object' ? context.userPreferences : {},

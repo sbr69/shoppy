@@ -696,6 +696,17 @@
   gap: var(--space-3);
 }
 
+.message-bubble--structured {
+  min-width: min(360px, 72vw);
+  overflow: hidden;
+  padding: 0;
+}
+
+.message-bubble--structured .agent-message-format {
+  gap: var(--space-3);
+  padding: 0.9rem 1rem 1rem;
+}
+
 .agent-message-format h3,
 .agent-message-format p {
   margin: 0;
@@ -704,8 +715,16 @@
 .agent-message-format h3 {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
+  font-weight: 800;
   letter-spacing: -0.01em;
+}
+
+.message-bubble--structured .agent-message-format h3 {
+  margin: -0.9rem -1rem 0;
+  padding: 0.72rem 1rem;
+  color: var(--text-primary);
+  background: var(--color-accent-soft, rgba(124, 137, 116, 0.12));
+  border-bottom: 1px solid var(--border-default);
 }
 
 .agent-message-format p {
@@ -739,7 +758,7 @@
 
 .agent-message-format strong {
   color: var(--text-primary);
-  font-weight: var(--weight-semibold);
+  font-weight: 800;
 }
 
 .message-time {
