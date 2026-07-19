@@ -156,7 +156,7 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
 
         {/* Footer */}
         <div className="sidebar-footer">
-          <button className="btn btn-ghost" onClick={() => setShowSettings(true)}>
+          <button className="btn btn-ghost" onClick={() => { setShowSettings(true); onClose?.(); }}>
             <Gear size={14} />
             <span>Settings</span>
           </button>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { X } from '@phosphor-icons/react';
+import { X, User, MapPin, Gear, FloppyDisk } from '@phosphor-icons/react';
 
 export default function SettingsPanel({ isOpen, onClose }) {
   const [profile, setProfile] = useState({ fullName: '', phone: '', line1: '', city: '', state: '', postalCode: '', country: '' });
@@ -25,25 +25,141 @@ export default function SettingsPanel({ isOpen, onClose }) {
 
   if (!shouldRender) return null;
 
+  const handleChange = (key, value) => {
+    setProfile((prev) => ({ ...prev, [key]: value }));
+  };
+
   return (
     <div className={`modal-overlay ${animateOut ? 'animate-out' : ''}`} onClick={onClose}>
       <div className={`settings-panel ${animateOut ? 'animate-out' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className="mobile-sheet-handle" />
+        
+        {/* Modal Header */}
         <div className="settings-header">
-          <h2>Settings</h2>
-          <button className="modal-close" onClick={onClose} aria-label="Close">
-            <X size={16} />
+          <div className="settings-header-title">
+            <Gear size={20} weight="fill" color="var(--color-accent)" />
+            <h2>Account Settings</h2>
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close settings">
+            <X size={18} weight="bold" />
           </button>
         </div>
 
+        {/* Modal Body */}
         <div className="settings-body">
-          <div className="settings-section">
-            <div className="settings-section-header"><h3>Personal details</h3></div>
-            <p className="form-hint">Saved securely and shared only with a store when you approve a delivery checkout.</p>
-            <div className="settings-profile-grid">
-              {[['fullName', 'Full name'], ['phone', 'Phone'], ['line1', 'Address'], ['city', 'City'], ['state', 'State'], ['postalCode', 'PIN / postal code'], ['country', 'Country']].map(([key, label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" value={profile[key]} onChange={(event) => setProfile({ ...profile, [key]: event.target.value })} /></label>)}
+          {/* Personal Info Group */}
+          <div className="settings-group-card">
+            <div className="settings-group-title">
+              <User size={16} weight="bold" />
+              <span>Personal Information</span>
             </div>
-            <button className="btn btn-primary btn-sm" disabled={savingProfile} onClick={async () => { setSavingProfile(true); try { await api.put('/profile', profile); } finally { setSavingProfile(false); } }}>{savingProfile ? 'Saving…' : 'Save personal details'}</button>
+            
+            <div className="settings-field-row">
+              <label className="form-group">
+                <span className="form-label">Full Name</span>
+                <input
+                  className="form-input"
+                  placeholder="John Doe"
+                  value={profile.fullName || ''}
+                  onChange={(e) => handleChange('fullName', e.target.value)}
+                />
+              </label>
+
+              <label className="form-group">
+                <span className="form-label">Phone Number</span>
+                <input
+                  className="form-input"
+                  placeholder="+1 (555) 000-0000"
+                  value={profile.phone || ''}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                />
+              </label>
+            </div>
           </div>
+
+          {/* Shipping Address Group */}
+          <div className="settings-group-card">
+            <div className="settings-group-title">
+              <MapPin size={16} weight="bold" />
+              <span>Shipping Address</span>
+            </div>
+            <p className="form-hint" style={{ marginBottom: 12 }}>
+              Used automatically during authorized express checkout orders.
+            </p>
+
+            <label className="form-group">
+              <span className="form-label">Street Address</span>
+              <input
+                className="form-input"
+                placeholder="123 Market Street, Suite 400"
+                value={profile.line1 || ''}
+                onChange={(e) => handleChange('line1', e.target.value)}
+              />
+            </label>
+
+            <div className="settings-field-row">
+              <label className="form-group">
+                <span className="form-label">City</span>
+                <input
+                  className="form-input"
+                  placeholder="San Francisco"
+                  value={profile.city || ''}
+                  onChange={(e) => handleChange('city', e.target.value)}
+                />
+              </label>
+
+              <label className="form-group">
+                <span className="form-label">State / Region</span>
+                <input
+                  className="form-input"
+                  placeholder="CA"
+                  value={profile.state || ''}
+                  onChange={(e) => handleChange('state', e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="settings-field-row">
+              <label className="form-group">
+                <span className="form-label">Postal / ZIP Code</span>
+                <input
+                  className="form-input"
+                  placeholder="94105"
+                  value={profile.postalCode || ''}
+                  onChange={(e) => handleChange('postalCode', e.target.value)}
+                />
+              </label>
+
+              <label className="form-group">
+                <span className="form-label">Country</span>
+                <input
+                  className="form-input"
+                  placeholder="United States"
+                  value={profile.country || ''}
+                  onChange={(e) => handleChange('country', e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="settings-footer">
+          <button
+            className="btn btn-primary settings-save-btn"
+            disabled={savingProfile}
+            onClick={async () => {
+              setSavingProfile(true);
+              try {
+                await api.put('/profile', profile);
+              } finally {
+                setSavingProfile(false);
+              }
+            }}
+          >
+            <FloppyDisk size={16} weight="bold" />
+            <span>{savingProfile ? 'Saving Changes…' : 'Save Settings'}</span>
+          </button>
         </div>
       </div>
     </div>
