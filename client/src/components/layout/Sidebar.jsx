@@ -93,6 +93,9 @@ export default function Sidebar({ isOpen, onClose, activeView = 'chat', onNaviga
             <img src="/logo.svg" alt="JarvisPayz Logo" style={{ width: 35, height: 35, display: 'block' }} />
             <span style={{ fontWeight: 700 }}>JarvisPayz</span>
           </div>
+          <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">
+            <X size={20} weight="bold" />
+          </button>
         </div>
 
         <nav className="sidebar-nav" aria-label="Workspace">

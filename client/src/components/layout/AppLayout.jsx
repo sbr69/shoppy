@@ -6,6 +6,7 @@ import { OrdersView, WalletActivityView } from './WorkspaceViews';
 import api from '../../services/api';
 import ConnectSiteModal from '../settings/ConnectSiteModal';
 import StoreDetailsModal from '../settings/StoreDetailsModal';
+import { ChatCircleText, ShoppingBag, ClockCounterClockwise, List, ShieldCheck } from '@phosphor-icons/react';
 
 function WorkspaceLoadingSkeleton() {
   return (
@@ -51,7 +52,9 @@ export default function AppLayout() {
   const [connectStoreOpen, setConnectStoreOpen] = useState(false);
   const [storeRefreshKey, setStoreRefreshKey] = useState(0);
   const [walletRefreshKey, setWalletRefreshKey] = useState(0);
-  const [telemetryOpen, setTelemetryOpen] = useState(true);
+  const [telemetryOpen, setTelemetryOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
   const [selectedStore, setSelectedStore] = useState(null);
   const initialSessionRequested = useRef(false);
 
@@ -98,17 +101,19 @@ export default function AppLayout() {
           {sessionBootstrapping ? (
             <WorkspaceLoadingSkeleton />
           ) : (
-          <ChatWindow
-            sessionId={sessionId}
-            onSessionReady={setSessionId}
-            initialMessages={bootstrap?.session?.id === sessionId ? bootstrap.messages : undefined}
-            onToggleTelemetry={() => setTelemetryOpen(prev => !prev)}
-            telemetryOpen={telemetryOpen}
-            onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
-          />
+            <ChatWindow
+              sessionId={sessionId}
+              onSessionReady={setSessionId}
+              initialMessages={bootstrap?.session?.id === sessionId ? bootstrap.messages : undefined}
+              onToggleTelemetry={() => setTelemetryOpen(prev => !prev)}
+              telemetryOpen={telemetryOpen}
+              onWalletChanged={() => setWalletRefreshKey((value) => value + 1)}
+              onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+            />
           )}
           <TelemetryPanel
             isOpen={telemetryOpen}
+            onClose={() => setTelemetryOpen(false)}
             onConnectStore={() => setConnectStoreOpen(true)}
             storeRefreshKey={storeRefreshKey}
             walletRefreshKey={walletRefreshKey}
@@ -119,8 +124,8 @@ export default function AppLayout() {
           />
         </div>
       )}
-      {view === 'orders' && <OrdersView />}
-      {view === 'wallet' && <WalletActivityView />}
+      {view === 'orders' && <OrdersView onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />}
+      {view === 'wallet' && <WalletActivityView onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />}
       <ConnectSiteModal
         isOpen={connectStoreOpen}
         onClose={() => { setConnectStoreOpen(false); setStoreRefreshKey((value) => value + 1); }}
@@ -131,6 +136,8 @@ export default function AppLayout() {
         onUpdated={(site) => { setSelectedStore(site); setStoreRefreshKey((value) => value + 1); }}
         onDisconnected={() => { setSelectedStore(null); setStoreRefreshKey((value) => value + 1); }}
       />
+
+
     </div>
   );
 }

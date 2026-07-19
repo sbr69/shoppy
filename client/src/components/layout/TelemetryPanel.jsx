@@ -12,6 +12,7 @@ import {
   Storefront,
   PlusCircle,
   ShieldCheck,
+  X,
 } from '@phosphor-icons/react';
 
 const walletCacheKey = (userId) => `jarvispayz_wallet_snapshot_${userId}`;
@@ -25,7 +26,7 @@ const saveWalletSnapshot = (userId, wallet) => {
   try { sessionStorage.setItem(walletCacheKey(userId), JSON.stringify({ wallet, expiresAt: Date.now() + 60_000 })); } catch { /* Storage is an optional enhancement. */ }
 };
 
-export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, storeRefreshKey, walletRefreshKey, onWalletChanged, initialSites, bootstrapLoading = false }) {
+export default function TelemetryPanel({ isOpen, onClose, onConnectStore, onStoreSelect, storeRefreshKey, walletRefreshKey, onWalletChanged, initialSites, bootstrapLoading = false }) {
   const toast = useToast();
   const { user } = useAuth();
   const [wallet, setWallet] = useState(() => readWalletSnapshot(user?.id));
@@ -126,11 +127,26 @@ export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, 
   const truncateAddr = (addr) => addr ? `${addr.slice(0, 6)}...${addr.slice(-6)}` : '';
 
   return (
-    <aside className={`telemetry-panel ${isOpen ? '' : 'closed'}`}>
-      <div className="telemetry-header">
-        <ShieldCheck size={18} weight="fill" color="var(--color-accent)" />
-        <h2>Agent Telemetry</h2>
-      </div>
+    <>
+      <div
+        className={`telemetry-overlay ${isOpen ? 'open' : ''}`}
+        onClick={onClose}
+      />
+      <aside className={`telemetry-panel ${isOpen ? '' : 'closed'}`}>
+        <div className="telemetry-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ShieldCheck size={18} weight="fill" color="var(--color-accent)" />
+            <h2>Agent Telemetry</h2>
+          </div>
+          <button
+            className="telemetry-close-btn"
+            onClick={onClose}
+            aria-label="Close panel"
+            title="Close panel"
+          >
+            <X size={18} weight="bold" />
+          </button>
+        </div>
 
       <div className="telemetry-body">
         {/* Wallet Section */}
@@ -153,9 +169,9 @@ export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, 
                 <span className="telemetry-wallet-amount">
                   {wallet?.funded
                     ? parseFloat(wallet.balance).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
                     : '0.00'}
                 </span>
                 <span className="telemetry-wallet-unit">XLM</span>
@@ -242,5 +258,6 @@ export default function TelemetryPanel({ isOpen, onConnectStore, onStoreSelect, 
 
       </div>
     </aside>
+  </>
   );
 }

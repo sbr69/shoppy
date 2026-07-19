@@ -9,7 +9,7 @@
 
 .workspace-header {
   display: flex;
-  gap: var(--space-4);
+  justify-content: space-between;
   align-items: center;
   margin: 0 auto var(--space-8);
   max-width: 1000px;
@@ -31,6 +31,18 @@
   font-size: var(--text-sm);
   color: var(--text-secondary);
   margin: 0;
+}
+
+.workspace-header-content {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.workspace-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .workspace-title-icon {
@@ -460,8 +472,16 @@
   text-align: right;
 }
 
-.activity-row-tx { min-width: 0; font: 500 var(--text-xs)/1 var(--font-mono); }
-.activity-row-tx .explorer-hash-link { display: inline-flex; align-items: center; gap: 0.35rem; }
+.activity-row-tx {
+  min-width: 0;
+  font: 500 var(--text-xs)/1 var(--font-mono);
+}
+
+.activity-row-tx .explorer-hash-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 
 .negative-impact {
   color: var(--color-error);
@@ -642,13 +662,18 @@
 /* ─── Responsive Adjustments ─── */
 @media (max-width: 768px) {
   .workspace {
-    padding: var(--space-6) var(--space-4);
+    padding: var(--space-4) var(--space-4) var(--safe-bottom);
   }
 
   .workspace-header {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
     gap: var(--space-3);
+  }
+
+  .workspace-header h1 {
+    font-size: var(--text-xl);
   }
 
   .workspace-header-action {
@@ -664,35 +689,11 @@
     background: transparent;
     border: none;
     box-shadow: none;
+    gap: var(--space-3);
   }
 
   .order-list-row,
-  .store-list-row {
-    grid-template-columns: 1fr;
-    gap: var(--space-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-3);
-    padding: var(--space-4);
-    background: var(--bg-card);
-  }
-
-  .order-row-actions,
-  .store-row-actions {
-    justify-content: flex-start;
-    margin-top: var(--space-1);
-  }
-
-  .order-workflow-drawer {
-    border-left: 1px solid var(--border-default);
-    border-right: 1px solid var(--border-default);
-    border-bottom: 1px solid var(--border-default);
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-    margin-top: -12px;
-    margin-bottom: var(--space-3);
-    padding: var(--space-4);
-  }
-
+  .store-list-row,
   .activity-list-row {
     grid-template-columns: 1fr;
     gap: var(--space-3);
@@ -701,9 +702,88 @@
     margin-bottom: var(--space-3);
     padding: var(--space-4);
     background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .order-list-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .order-row-product {
+    width: 100%;
+  }
+
+  .order-row-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--border-subtle);
+  }
+
+  .order-row-date,
+  .order-row-hash,
+  .order-row-price {
+    font-size: var(--text-xs);
+  }
+
+  .order-row-actions,
+  .store-row-actions {
+    justify-content: flex-end;
+    width: 100%;
+    margin-top: var(--space-1);
+  }
+
+  .order-workflow-drawer {
+    border: 1px solid var(--border-default);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    margin-top: calc(-1 * var(--space-3) - 1px);
+    margin-bottom: var(--space-3);
+    padding: var(--space-4);
+    background: var(--bg-secondary);
+  }
+
+  .activity-list-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2.5);
+  }
+
+  .activity-row-main {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .activity-row-date {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--border-subtle);
   }
 
   .activity-row-value {
-    text-align: left;
+    text-align: right;
+  }
+
+  .store-list-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .store-row-brand {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .store-row-limits {
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--border-subtle);
   }
 }

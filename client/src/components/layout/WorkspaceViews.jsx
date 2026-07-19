@@ -7,6 +7,7 @@ import {
   Wallet,
   PlusCircle,
   Storefront,
+  List,
 } from '@phosphor-icons/react';
 import api from '../../services/api';
 
@@ -15,7 +16,7 @@ const formatDate = (value) =>
     ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
     : '—';
 
-export function OrdersView() {
+export function OrdersView({ onToggleSidebar }) {
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedOrder, setExpandedOrder] = useState(null);
@@ -61,6 +62,7 @@ export function OrdersView() {
       icon={<Package size={22} weight="fill" />}
       title="Orders Ledger"
       subtitle="Complete ledger of merchant order settlements and guarded Stellar payments."
+      onToggleSidebar={onToggleSidebar}
     >
       {loading ? (
         <div className="workspace-loading-state">
@@ -192,7 +194,7 @@ export function OrdersView() {
   );
 }
 
-export function WalletActivityView() {
+export function WalletActivityView({ onToggleSidebar }) {
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -213,6 +215,7 @@ export function WalletActivityView() {
       icon={<Wallet size={22} weight="fill" />}
       title="Wallet Activity Log"
       subtitle="Complete historical audit trail of funding operations, limits, and smart contract policies."
+      onToggleSidebar={onToggleSidebar}
     >
       {loading ? (
         <div className="workspace-loading-state">
@@ -383,16 +386,25 @@ export function StoresView({ onConnectStore, refreshKey }) {
   );
 }
 
-function WorkspaceShell({ icon, title, subtitle, action, children }) {
+function WorkspaceShell({ icon, title, subtitle, action, onToggleSidebar, children }) {
   return (
     <main className="workspace">
       <header className="workspace-header">
-        <div className="workspace-title-icon">{icon}</div>
-        <div>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
+        <div className="workspace-header-content">
+          <div className="workspace-title-icon">{icon}</div>
+          <div>
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+          </div>
         </div>
-        {action && <div className="workspace-header-action">{action}</div>}
+        <div className="workspace-header-actions">
+          {action && <div className="workspace-header-action">{action}</div>}
+          {onToggleSidebar && (
+            <button className="chat-mobile-menu-btn" onClick={onToggleSidebar} aria-label="Open menu">
+              <List size={20} weight="bold" />
+            </button>
+          )}
+        </div>
       </header>
       {children}
     </main>

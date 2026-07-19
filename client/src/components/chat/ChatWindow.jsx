@@ -6,7 +6,7 @@ import MessageBubble from './MessageBubble';
 import ProductCard from './ProductCard';
 import ReceiptCard from './ReceiptCard';
 import TypingIndicator from './TypingIndicator';
-import { ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders } from '@phosphor-icons/react';
+import { ShoppingBagOpen, PaperPlaneRight, XCircle, Hourglass, Sliders, List } from '@phosphor-icons/react';
 import { captureClientException, trackProductEvent } from '../../services/observability';
 
 const SUGGESTIONS = [
@@ -26,7 +26,7 @@ const enrichMessages = (messages) => messages.map((msg) => {
   return msg;
 });
 
-export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged, initialMessages }) {
+export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId, onSessionReady, onWalletChanged, initialMessages, onToggleSidebar }) {
   const { user } = useAuth();
   const toast = useToast();
   const [messages, setMessages] = useState([]);
@@ -159,7 +159,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       return (
         <div key={msg.id || index}>
           <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
-          <div style={{ marginLeft: 44, marginTop: 8 }}>
+          <div className="chat-card-attachment">
             <ProductCard
               product={msg.metadata.product}
               reasoning={msg.metadata.reasoning}
@@ -191,7 +191,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       return (
         <div key={msg.id || index}>
           <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
-          <div style={{ marginLeft: 44, marginTop: 8 }}>
+          <div className="chat-card-attachment">
             <ReceiptCard
               product={msg.metadata.product}
               purchase={msg.metadata.purchase}
@@ -206,13 +206,15 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       return (
         <div key={msg.id || index}>
           <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
-          <div className="receipt-card receipt-card--error" style={{ marginLeft: 44, marginTop: 8 }}>
-            <div className="receipt-card-header" style={{ color: 'var(--color-error, #ef4444)' }}>
-              <XCircle size={16} weight="fill" style={{ marginRight: 6 }} /> Payment Failed
-            </div>
-            <div className="receipt-card-row">
-              <span className="receipt-card-label">Reason</span>
-              <span className="receipt-card-value">{msg.metadata?.error || 'Unknown error'}</span>
+          <div className="chat-card-attachment">
+            <div className="receipt-card receipt-card--error">
+              <div className="receipt-card-header" style={{ color: 'var(--color-error, #ef4444)' }}>
+                <XCircle size={16} weight="fill" style={{ marginRight: 6 }} /> Payment Failed
+              </div>
+              <div className="receipt-card-row">
+                <span className="receipt-card-label">Reason</span>
+                <span className="receipt-card-value">{msg.metadata?.error || 'Unknown error'}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -224,8 +226,9 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
       return (
         <div key={msg.id || index}>
           <MessageBubble message={msg} userAvatar={user?.avatarUrl} />
-          <div className="receipt-card" style={{ marginLeft: 44, marginTop: 8 }}>
-            <div className="receipt-card-header">
+          <div className="chat-card-attachment">
+            <div className="receipt-card">
+              <div className="receipt-card-header">
               <Hourglass size={16} weight="fill" style={{ marginRight: 6, color: 'var(--color-warning)' }} /> Purchase Pending
             </div>
             <div className="receipt-card-row">
@@ -239,6 +242,7 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
               </span>
             </div>
           </div>
+        </div>
         </div>
       );
     }
@@ -291,6 +295,13 @@ export default function ChatWindow({ onToggleTelemetry, telemetryOpen, sessionId
             aria-pressed={telemetryOpen}
           >
             <Sliders size={18} weight="bold" />
+          </button>
+          <button
+            className="chat-mobile-menu-btn"
+            onClick={onToggleSidebar}
+            aria-label="Open menu"
+          >
+            <List size={20} weight="bold" />
           </button>
         </div>
       </div>

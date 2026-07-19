@@ -45,7 +45,8 @@ button {
   color: inherit;
 }
 
-ul, ol {
+ul,
+ol {
   list-style: none;
 }
 
@@ -54,7 +55,9 @@ img {
   display: block;
 }
 
-input, textarea, select {
+input,
+textarea,
+select {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
@@ -64,7 +67,12 @@ input, textarea, select {
 }
 
 /* ─── Typography ─── */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-display);
   line-height: var(--leading-tight);
   color: var(--text-primary);
@@ -72,10 +80,27 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-h1 { font-size: var(--text-5xl); font-weight: var(--weight-extrabold); letter-spacing: -0.035em; }
-h2 { font-size: var(--text-3xl); font-weight: var(--weight-bold); letter-spacing: -0.025em; }
-h3 { font-size: var(--text-2xl); font-weight: var(--weight-semibold); }
-h4 { font-size: var(--text-xl); font-weight: var(--weight-semibold); }
+h1 {
+  font-size: var(--text-5xl);
+  font-weight: var(--weight-extrabold);
+  letter-spacing: -0.035em;
+}
+
+h2 {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.025em;
+}
+
+h3 {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+}
+
+h4 {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+}
 
 p {
   color: var(--text-secondary);
@@ -248,6 +273,7 @@ p {
     opacity: 0;
     transform: translateY(12px) scale(0.97);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -255,8 +281,13 @@ p {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideInRight {
@@ -264,6 +295,7 @@ p {
     opacity: 0;
     transform: translateX(24px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -271,24 +303,51 @@ p {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .animate-fade-in-up {
@@ -300,18 +359,43 @@ p {
 }
 
 /* ─── Stagger delays for children ─── */
-.stagger > *:nth-child(1) { animation-delay: 0ms; }
-.stagger > *:nth-child(2) { animation-delay: 80ms; }
-.stagger > *:nth-child(3) { animation-delay: 160ms; }
-.stagger > *:nth-child(4) { animation-delay: 240ms; }
-.stagger > *:nth-child(5) { animation-delay: 320ms; }
-.stagger > *:nth-child(6) { animation-delay: 400ms; }
+.stagger>*:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.stagger>*:nth-child(2) {
+  animation-delay: 80ms;
+}
+
+.stagger>*:nth-child(3) {
+  animation-delay: 160ms;
+}
+
+.stagger>*:nth-child(4) {
+  animation-delay: 240ms;
+}
+
+.stagger>*:nth-child(5) {
+  animation-delay: 320ms;
+}
+
+.stagger>*:nth-child(6) {
+  animation-delay: 400ms;
+}
 
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
-  h1 { font-size: var(--text-3xl); }
-  h2 { font-size: var(--text-2xl); }
-  h3 { font-size: var(--text-xl); }
+  h1 {
+    font-size: var(--text-3xl);
+  }
+
+  h2 {
+    font-size: var(--text-2xl);
+  }
+
+  h3 {
+    font-size: var(--text-xl);
+  }
 
   .container {
     padding: 0 var(--space-4);
@@ -438,6 +522,7 @@ p {
     opacity: 0;
     transform: translateX(24px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);

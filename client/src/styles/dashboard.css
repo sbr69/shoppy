@@ -92,8 +92,29 @@
 }
 
 @media (max-width: 480px) {
+  .login-page {
+    padding: var(--space-4);
+    align-items: center;
+  }
+
   .login-card {
-    margin: var(--space-4);
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
     padding: var(--space-6) var(--space-4);
+    border-radius: var(--radius-xl);
+  }
+
+  .login-card-header h2 {
+    font-size: var(--text-lg);
+  }
+
+  .login-card-body {
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  .login-card-body > div {
+    max-width: 100% !important;
   }
 }
