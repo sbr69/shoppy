@@ -321,6 +321,14 @@ async function handleSearch(userId, sessionId, intent) {
       && (!intent.minPrice || !isCatalogCurrencyBudget(intent, product) || Number(product.price) >= intent.minPrice))
     .map((product) => ({ ...product, semanticScore: semanticByProduct.get(`${product.siteId}:${product.id}`) ?? product.semanticScore }));
   if (!products.length) {
+    const merchantFailures = results
+      .filter((result) => result.status === 'rejected')
+      .map((result) => String(result.reason?.message || ''));
+    const authorizationFailure = merchantFailures.find((message) => /store authorization|authorization refresh|reconnect the store/i.test(message));
+    if (authorizationFailure && merchantFailures.length === results.length) {
+      await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'Merchant authorization could not be refreshed.' });
+      return { type: 'text', content: '**Store connection needs renewal**\n\nI could not refresh this store’s authorization, so I did not treat the catalog as empty. Reconnect the store to restore secure search and checkout access. No funds moved.' };
+    }
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
     return { type: 'text', content: `**No live result found**\n\nI searched your authorized stores for **${intent.product}**, but none returned an in-stock match. No funds moved.` };
   }

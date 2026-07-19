@@ -7,6 +7,10 @@ import { removeSitePolicy, syncSitePolicy } from './site.service.js';
 
 const OAUTH_TTL_MS = 10 * 60 * 1000;
 const REQUIRED_SCOPES = ['profile', 'checkout:prepare', 'checkout:confirm', 'orders:read'];
+// A semantic search issues several independent catalogue queries at once.
+// Merchants correctly rotate refresh tokens, so those requests must never try
+// to exchange the same refresh token concurrently.
+const tokenRefreshesInFlight = new Map();
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const attemptScope = (value) => `store-oauth-attempt:${value}`;
 const tokenScope = (siteId) => `store-oauth-token:${siteId}`;
@@ -152,10 +156,37 @@ export async function revokeStoreTokens({ token, client, revocationUrl, fetchImp
 export async function getStoreAccessToken(site) {
   const token = JSON.parse(decrypt(Buffer.from(site.auth_token_ciphertext, 'base64'), Buffer.from(site.auth_token_iv, 'base64'), Buffer.from(site.auth_token_tag, 'base64'), tokenScope(site.id)));
   if (!tokenNeedsRefresh(token)) return token;
-  const client = readClient(site);
-  Object.assign(token, await refreshStoreToken({ token, client, tokenUrl: site.oauth_server_metadata.tokenUrl }));
-  const sealed = encrypt(JSON.stringify(token), tokenScope(site.id)); await getDb()`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${token.expiresAt} where id = ${site.id}`;
-  return token;
+
+  const existingRefresh = tokenRefreshesInFlight.get(site.id);
+  if (existingRefresh) return existingRefresh;
+
+  const refresh = (async () => {
+    const db = getDb();
+    // Re-read the encrypted credential after acquiring the in-process lock.
+    // A preceding request may already have persisted the rotated refresh token.
+    const [currentSite] = await db`select * from connected_sites where id = ${site.id}`;
+    if (!currentSite?.auth_token_ciphertext) throw new Error('Store authorization is unavailable. Reconnect the store to continue.');
+    const currentToken = JSON.parse(decrypt(
+      Buffer.from(currentSite.auth_token_ciphertext, 'base64'),
+      Buffer.from(currentSite.auth_token_iv, 'base64'),
+      Buffer.from(currentSite.auth_token_tag, 'base64'),
+      tokenScope(currentSite.id),
+    ));
+    if (!tokenNeedsRefresh(currentToken)) return currentToken;
+
+    const client = readClient(currentSite);
+    Object.assign(currentToken, await refreshStoreToken({ token: currentToken, client, tokenUrl: currentSite.oauth_server_metadata.tokenUrl }));
+    const sealed = encrypt(JSON.stringify(currentToken), tokenScope(currentSite.id));
+    await db`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${currentToken.expiresAt}, updated_at = now() where id = ${currentSite.id}`;
+    return currentToken;
+  })();
+
+  tokenRefreshesInFlight.set(site.id, refresh);
+  try {
+    return await refresh;
+  } finally {
+    tokenRefreshesInFlight.delete(site.id);
+  }
 }
 
 export async function disconnectStore(userId, googleSub, siteId) {
