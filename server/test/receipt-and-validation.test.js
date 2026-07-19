@@ -4,7 +4,7 @@ import { buildReceiptMemo, verifyReceiptMemo } from '../src/services/receipt.ser
 import { parseFiniteNonNegative, validateChatMessage, validateSiteUpdate } from '../src/services/validation.service.js';
 import { xlmToStroops } from '../src/services/soroban.service.js';
 import { normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
-import { availableCatalogCategories, noCredibleMatchMessage, paymentFailureDetail, resolveActiveProductReference } from '../src/services/agent.service.js';
+import { availableCatalogCategories, noCredibleMatchMessage, paymentFailureDetail, resolveActiveProductReference, resolveActiveProductReferences } from '../src/services/agent.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -78,6 +78,7 @@ test('active product cards resolve exact names and generated checkout references
   assert.equal(resolveActiveProductReference(`Confirm purchase ${carIntent}`, shown), carIntent);
   assert.equal(resolveActiveProductReference('buy Remote Control Car', shown), carIntent);
   assert.equal(resolveActiveProductReference('tell me about the warranty', shown), null);
+  assert.deepEqual(resolveActiveProductReferences('buy Remote Control Car and Building Blocks Set', shown), [carIntent, blockIntent]);
 });
 
 test('Soroban policy errors are presented as safe payment outcomes', () => {

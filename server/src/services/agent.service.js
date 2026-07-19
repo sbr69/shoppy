@@ -41,6 +41,17 @@ export function resolveActiveProductReference(message, shownProducts = []) {
   return exactName?.purchaseIntentId || null;
 }
 
+export function resolveActiveProductReferences(message, shownProducts = []) {
+  const incoming = normalizedText(message);
+  const ids = String(message || '').match(new RegExp(purchaseIntentIdPattern.source, 'ig')) || [];
+  const selected = new Set(ids.map((id) => id.toLowerCase()));
+  for (const product of shownProducts) {
+    const name = normalizedText(product.name);
+    if (name.length >= 3 && incoming.includes(name)) selected.add(product.purchaseIntentId.toLowerCase());
+  }
+  return shownProducts.filter((product) => selected.has(product.purchaseIntentId.toLowerCase())).map((product) => product.purchaseIntentId).slice(0, 3);
+}
+
 function lastContinuationOffer(messages) {
   for (const message of [...messages].reverse()) {
     if (message.role !== 'agent' || !message.metadata) continue;
@@ -206,6 +217,11 @@ export async function processMessage(userId, sessionId, message, googleSub) {
     db`select role, content, metadata from messages where session_id = ${sessionId} order by created_at asc`,
     getShoppingPreferences(userId),
   ]);
+  const [pendingBatch] = await db`
+    select b.*, count(i.id)::int as item_count from purchase_batches b
+    left join purchase_intents i on i.batch_id = b.id
+    where b.user_id = ${userId} and b.session_id = ${sessionId} and b.state in ('selected', 'confirmed')
+    group by b.id order by b.updated_at desc limit 1`;
   await db`insert into messages (session_id, role, content) values (${sessionId}, 'user', ${message})`;
   await db`update chat_sessions set title = case when title = 'New shopping chat' then left(${message}, 72) else title end, updated_at = now() where id = ${sessionId}`;
   const pending = pendingRows[0];
@@ -228,18 +244,23 @@ export async function processMessage(userId, sessionId, message, googleSub) {
     userPreferences,
     shownProducts,
     continuationOffer: lastContinuationOffer(recentMessages),
+    pendingBatch: pendingBatch ? { id: pendingBatch.id, state: pendingBatch.state, itemCount: pendingBatch.item_count, totalXlm: pendingBatch.total_xlm } : null,
   });
   // Product cards and their generated commands are structured UI references.
   // Resolve them locally so a model can never turn “buy Remote Control Car”
   // into an unrelated fresh search or lose an exact selected card.
-  const referencedIntentId = resolveActiveProductReference(message, shownProducts);
-  if (referencedIntentId && intent.action !== 'question' && intent.action !== 'cancel') {
+  const referencedIntentIds = resolveActiveProductReferences(message, shownProducts);
+  const referencedIntentId = referencedIntentIds[0] || resolveActiveProductReference(message, shownProducts);
+  if (referencedIntentIds.length >= 2 && intent.action !== 'question' && intent.action !== 'cancel') {
+    intent = { ...intent, action: 'confirm_batch', purchaseIntentIds: referencedIntentIds };
+  } else if (referencedIntentId && intent.action !== 'question' && intent.action !== 'cancel') {
     intent = { ...intent, action: 'confirm_purchase', purchaseIntentId: referencedIntentId };
   }
   let response;
   if (intent.action === 'search') response = await handleSearch(userId, sessionId, intent);
   else if (intent.action === 'show_offer') response = await handleContinuationOffer(userId, sessionId, intent);
   else if (intent.action === 'confirm_purchase') response = await handleConfirmation(userId, sessionId, googleSub, intent.purchaseIntentId);
+  else if (intent.action === 'confirm_batch') response = await handleBatchConfirmation(userId, sessionId, googleSub, intent.purchaseIntentIds?.length ? intent.purchaseIntentIds : null, pendingBatch?.id || null);
   else if (intent.action === 'cancel') response = await handleCancel(userId, sessionId);
   else if (intent.action === 'remember_preference') {
     const preferences = await saveShoppingPreferences(userId, intent.preferenceUpdate);
@@ -453,6 +474,109 @@ async function handleConfirmation(userId, sessionId, googleSub, requestedId) {
   }
 }
 
+async function createPurchaseBatch(userId, sessionId, intentIds) {
+  const db = getDb();
+  return db.begin(async (tx) => {
+    const intents = await tx`select * from purchase_intents where id in ${tx(intentIds)} and user_id = ${userId} and session_id = ${sessionId} and state = 'selected' and batch_id is null order by updated_at desc`;
+    if (intents.length !== intentIds.length || intents.length < 2 || intents.length > 3) return null;
+    const [batch] = await tx`insert into purchase_batches (user_id, session_id, state, expires_at) values (${userId}, ${sessionId}, 'selected', ${new Date(Date.now() + INTENT_TTL_MS).toISOString()}) returning *`;
+    await tx`update purchase_intents set batch_id = ${batch.id}, updated_at = now() where id in ${tx(intents.map((item) => item.id))}`;
+    return { ...batch, intents };
+  });
+}
+
+function basketLines(items, amountKey = 'price_xlm') {
+  return items.map((item) => `- ${item.product_json.name} × ${item.quantity} — ${Number(item[amountKey]).toFixed(7)} XLM`).join('\n');
+}
+
+/** Verify or execute a basket of two or three already selected product cards. */
+async function handleBatchConfirmation(userId, sessionId, googleSub, requestedIds, existingBatchId) {
+  const db = getDb();
+  let batch = null;
+  let items = [];
+  if (requestedIds?.length >= 2) {
+    batch = await createPurchaseBatch(userId, sessionId, requestedIds);
+    if (!batch) return { type: 'text', content: '**Choose active product cards**\n\nA basket can contain two or three currently shown products. Search again if one of those cards has expired.' };
+    items = batch.intents;
+  } else if (existingBatchId) {
+    [batch] = await db`select * from purchase_batches where id = ${existingBatchId} and user_id = ${userId} and session_id = ${sessionId}`;
+    if (batch) items = await db`select * from purchase_intents where batch_id = ${batch.id} and user_id = ${userId} order by created_at asc`;
+  }
+  if (!batch || items.length < 2) return { type: 'text', content: '**No basket awaiting approval**\n\nChoose two or three product cards first.' };
+  if (new Date(batch.expires_at).getTime() <= Date.now()) {
+    await db`update purchase_batches set state = 'expired', updated_at = now() where id = ${batch.id}`;
+    return { type: 'text', content: '**Basket expired**\n\nSearch again to receive current stock and merchant pricing.' };
+  }
+  const profileState = await getProfile(userId);
+  if (profileState.missing.length) return { type: 'profile_required', content: `**Delivery details required**\n\nComplete ${profileState.missing.join(', ')} in Settings → Personal details. Your basket will remain saved.`, metadata: { missing: profileState.missing, batchId: batch.id } };
+
+  if (batch.state === 'selected') {
+    const sites = new Map();
+    for (const item of items) {
+      const [site] = await db`select * from connected_sites where id = ${item.site_id} and user_id = ${userId} and status = 'active'`;
+      if (!site) return { type: 'text', content: '**Store connection unavailable**\n\nOne store in this basket is no longer authorized. No payment was made.' };
+      sites.set(site.id, site);
+    }
+    try {
+      for (const site of sites.values()) {
+        if (!site.policy_synced_at) await syncSitePolicy(userId, googleSub, site.id);
+      }
+      const prepared = [];
+      for (const item of items) {
+        const site = sites.get(item.site_id);
+        const checkout = await new EcommerceAdapter(site).prepareCheckout(item.product_json, item.quantity, item.idempotency_key, deliveryAddress(profileState.profile));
+        if (Number(checkout.xlmAmount) > Number(site.per_transaction_cap)) throw new Error(`${item.product_json.name} exceeds this store’s per-transaction limit`);
+        const requestedBudget = item.product_json.agentRequest?.requestedBudget;
+        if (requestedBudget?.currency === 'XLM' && Number(checkout.xlmAmount) > Number(requestedBudget.amount)) throw new Error(`${item.product_json.name} exceeds its requested XLM budget`);
+        prepared.push({ item, checkout });
+      }
+      await db.begin(async (tx) => {
+        for (const { item, checkout } of prepared) await tx`update purchase_intents set state = 'confirmed', merchant_order_id = ${checkout.orderId}, price_xlm = ${Number(checkout.xlmAmount)}, final_total_json = ${db.json(checkout)}, updated_at = now() where id = ${item.id}`;
+        await tx`update purchase_batches set state = 'confirmed', total_xlm = ${prepared.reduce((sum, entry) => sum + Number(entry.checkout.xlmAmount), 0)}, updated_at = now() where id = ${batch.id}`;
+      });
+      const confirmedItems = prepared.map(({ item, checkout }) => ({ ...item, price_xlm: Number(checkout.xlmAmount) }));
+      const total = confirmedItems.reduce((sum, item) => sum + Number(item.price_xlm), 0);
+      return { type: 'basket_ready', content: `**Basket ready for final approval**\n\n${basketLines(confirmedItems)}\n\n**Combined total:** ${total.toFixed(7)} XLM\n\nReply **buy basket** to approve these exact merchant totals. Payments are sent per order; if a later order cannot be completed, I will report exactly what succeeded.`, metadata: { batchId: batch.id, totalXlm: total, items: confirmedItems.map((item) => ({ product: item.product_json, quantity: item.quantity, purchaseIntentId: item.id, amountXlm: Number(item.price_xlm) })) } };
+    } catch (error) {
+      await db`update purchase_batches set state = 'failed', updated_at = now() where id = ${batch.id}`;
+      return { type: 'purchase_failed', content: `**Basket could not be verified**\n\n${error.message}\n\nNo payment was made.` };
+    }
+  }
+
+  if (batch.state !== 'confirmed') return { type: 'text', content: '**Basket is no longer ready**\n\nSearch again if you still want these items.' };
+  const sites = new Map();
+  const reserved = [];
+  try {
+    for (const item of items) {
+      const [site] = await db`select * from connected_sites where id = ${item.site_id} and user_id = ${userId} and status = 'active'`;
+      if (!site) throw new Error(`${item.product_json.name}'s store is no longer authorized`);
+      sites.set(site.id, site);
+      reserved.push(await reserveSpend(item.id, userId, site.id));
+    }
+  } catch (error) {
+    for (const item of reserved) await markIntentState(item.id, 'confirmed', { reserved_xlm: 0 });
+    return { type: 'purchase_failed', content: `**Basket is outside the active spending policy**\n\n${error.message}\n\nNo payment was made.` };
+  }
+
+  await db`update purchase_batches set state = 'processing', updated_at = now() where id = ${batch.id}`;
+  const completed = [];
+  const failed = [];
+  for (const item of reserved) {
+    try {
+      completed.push({ item, result: await executeCustodialPayment(userId, googleSub, item, sites.get(item.site_id), item.product_json) });
+    } catch (error) {
+      await markIntentState(item.id, 'failed', { reserved_xlm: 0 });
+      failed.push({ item, error: paymentFailureDetail(error) });
+      break;
+    }
+  }
+  const finalState = failed.length ? 'partial' : 'completed';
+  await db`update purchase_batches set state = ${finalState}, updated_at = now() where id = ${batch.id}`;
+  if (failed.length) return { type: 'purchase_failed', content: `**Basket partially completed**\n\nCompleted:\n${completed.map(({ item }) => `- ${item.product_json.name}`).join('\n') || '- None'}\n\nCould not complete:\n- ${failed[0].item.product_json.name}: ${failed[0].error}\n\nNo additional payments were attempted.`, metadata: { batchId: batch.id, completed: completed.map(({ result }) => result) } };
+  const pending = completed.filter(({ result }) => !result.success).length;
+  return { type: pending ? 'purchase_pending' : 'purchase_success', content: pending ? `**Basket payment submitted**\n\n${completed.map(({ item }) => `- ${item.product_json.name}`).join('\n')}\n\n${pending} order${pending === 1 ? '' : 's'} await merchant confirmation; reconciliation will continue automatically.` : `**Basket purchase confirmed**\n\n${completed.map(({ item }) => `- ${item.product_json.name}`).join('\n')}\n\nAll ${completed.length} orders were paid and confirmed.`, metadata: { batchId: batch.id, purchases: completed.map(({ result }) => result) } };
+}
+
 async function handleCancel(userId, sessionId) {
   const db = getDb();
   await db.begin(async (tx) => {
@@ -465,6 +589,7 @@ async function handleCancel(userId, sessionId) {
       await tx`update purchase_approvals set state = 'expired' where user_id = ${userId} and purchase_intent_id in ${tx(intents.map((intent) => intent.id))} and state in ('prepared', 'authorized')`;
     }
   });
+  await getDb()`update purchase_batches set state = 'cancelled', updated_at = now() where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')`;
   return { type: 'text', content: '**Selection cancelled**\n\nNo payment was made. You can start a new search whenever you are ready.' };
 }
 
