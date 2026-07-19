@@ -18,6 +18,35 @@ const liveSearchFilters = (intent) => normalizedCurrency(intent.currency) === 'X
   ? { maxPrice: null, minPrice: null }
   : { maxPrice: intent.maxPrice, minPrice: intent.minPrice };
 
+const readableCategory = (value) => String(value || '')
+  .replace(/[-_]+/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  .trim();
+
+/** Return useful catalogue context without exposing an arbitrary product as a recommendation. */
+export function availableCatalogCategories(products, limit = 4) {
+  const categories = new Map();
+  for (const product of products) {
+    const label = readableCategory(product.category);
+    if (!label) continue;
+    const key = label.toLowerCase();
+    categories.set(key, { label, count: (categories.get(key)?.count || 0) + 1 });
+  }
+  return [...categories.values()]
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
+    .slice(0, limit)
+    .map((entry) => entry.label);
+}
+
+export function noCredibleMatchMessage(intent, products, nearestMatch = null) {
+  const categories = availableCatalogCategories(products);
+  const categoryText = categories.length ? ` Available categories include ${categories.join(', ')}.` : '';
+  const relatedText = nearestMatch
+    ? ` The closest related listing is ${nearestMatch.name}${nearestMatch.category ? ` in ${readableCategory(nearestMatch.category)}` : ''}, but it is not a reliable fit for what you asked for, so I have not selected it.`
+    : '';
+  return `I could not find a credible match for “${intent.rawQuery}” in the live catalog, so I will not guess or prepare a checkout.${relatedText}${categoryText} Try a different category or connect a store that carries the item you need.`;
+}
+
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
   const [pendingRows, recentMessages, userPreferences] = await Promise.all([
@@ -103,11 +132,10 @@ async function handleSearch(userId, sessionId, intent) {
     await recordWorkflowEvent({ userId, sessionId, stage: 'search', status: 'failed', detail: 'No matching in-stock products were returned.' });
     return { type: 'text', content: `I searched your authorized stores for ${intent.product} using several meaning-based catalog queries, but none returned a live, in-stock match. I have not reserved an order or moved any funds.` };
   }
-  const { bestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
+  const { bestMatch, nearestMatch, reasoning, alternatives = [] } = await rankProducts(products, intent);
   const site = sites.find((candidate) => candidate.id === bestMatch?.siteId);
   if (!bestMatch || !site) {
-    const availablePreview = [...new Set(products.map((product) => product.name))].slice(0, 4).join(', ');
-    return { type: 'text', content: `I could not find a credible match for “${intent.rawQuery}” in the live catalog, so I will not guess or prepare a checkout. This store currently has items such as ${availablePreview || 'other unrelated products'}. Try a different category or connect a store that carries the item you need.` };
+    return { type: 'text', content: noCredibleMatchMessage(intent, products, nearestMatch) };
   }
   const expiry = new Date(Date.now() + INTENT_TTL_MS).toISOString();
   const requestedBudget = intent.maxPrice ? { amount: intent.maxPrice, currency: normalizedCurrency(intent.currency) || null } : null;

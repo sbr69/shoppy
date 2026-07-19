@@ -4,7 +4,7 @@ import { buildReceiptMemo, verifyReceiptMemo } from '../src/services/receipt.ser
 import { parseFiniteNonNegative, validateChatMessage, validateSiteUpdate } from '../src/services/validation.service.js';
 import { xlmToStroops } from '../src/services/soroban.service.js';
 import { normalizeSemanticIntent, retrievalQueries } from '../src/services/intent.service.js';
-import { paymentFailureDetail } from '../src/services/agent.service.js';
+import { availableCatalogCategories, noCredibleMatchMessage, paymentFailureDetail } from '../src/services/agent.service.js';
 
 const receipt = {
   purchaseIntentId: '6e1467dc-c1fc-4b02-ae77-e5d1e0ea338a',
@@ -55,4 +55,18 @@ test('Soroban policy errors are presented as safe payment outcomes', () => {
   assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #8)')), /daily XLM allowance/i);
   assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #7)')), /per-transaction XLM limit/i);
   assert.match(paymentFailureDetail(new Error('HostError: Error(Contract, #5)')), /does not have enough XLM/i);
+});
+
+test('no-match shopping replies provide categories and only name a genuine near match', () => {
+  const products = [
+    { name: 'Science Kit for Kids', category: 'toys-and-games' },
+    { name: 'Body Scrub', category: 'beauty_personal_care' },
+    { name: 'Train Set', category: 'toys-and-games' },
+  ];
+  assert.deepEqual(availableCatalogCategories(products), ['Toys And Games', 'Beauty Personal Care']);
+  const withoutNearMatch = noCredibleMatchMessage({ rawQuery: 'desk accessories' }, products);
+  assert.match(withoutNearMatch, /Available categories include Toys And Games, Beauty Personal Care/);
+  assert.doesNotMatch(withoutNearMatch, /Science Kit for Kids/);
+  const withNearMatch = noCredibleMatchMessage({ rawQuery: 'learning gift' }, products, products[0]);
+  assert.match(withNearMatch, /closest related listing is Science Kit for Kids/);
 });

@@ -36,12 +36,14 @@ Pick the BEST product for the user. Consider:
 2. Compare meaning, use case, attributes, and product descriptions—not only overlapping words.
 3. Prefer stronger ratings/value only after relevance.
 4. Do not claim an attribute that is missing from the merchant data.
+5. When no product is suitable, set bestIndex to null. Set nearestIndex only for a product that is genuinely related by category or use case, but explain why it is not a safe recommendation. Never name an arbitrary catalog item as a near match.
 5. When at least two reasonable candidates exist, always return one or two distinct alternativeIndexes. Leave it empty only when no other candidate is genuinely relevant.
 
 Respond with JSON:
 {
   "bestIndex": <number or null when no candidate is suitable>,
   "alternativeIndexes": ["up to two distinct candidate indexes that are reasonable alternatives"],
+  "nearestIndex": <number or null; a related but unsuitable item, only when there is a genuine category or use-case relationship>,
   "matchQuality": <number from 0 to 1>,
   "reasoning": "<1-2 sentence explanation of why this is the best fit and any trade-off>",
   "unmetRequirements": ["<requirement not verified>"]
@@ -55,8 +57,14 @@ Respond with JSON:
     console.warn('Semantic product ranking unavailable; no product will be selected:', error.message);
   }
 
+  const nearestMatch = Number.isInteger(parsed?.nearestIndex)
+    && parsed.nearestIndex >= 0
+    && parsed.nearestIndex < products.length
+    ? products[parsed.nearestIndex]
+    : null;
+
   if (parsed?.bestIndex === null && typeof parsed.reasoning === 'string') {
-    return { bestMatch: null, reasoning: parsed.reasoning, allProducts: products };
+    return { bestMatch: null, nearestMatch, reasoning: parsed.reasoning, allProducts: products };
   }
   if (parsed && Number.isInteger(parsed.bestIndex) && parsed.bestIndex >= 0 && parsed.bestIndex < products.length && typeof parsed.reasoning === 'string') {
     const quality = Number(parsed.matchQuality);
@@ -69,6 +77,7 @@ Respond with JSON:
       alternatives: Array.isArray(parsed.alternativeIndexes) ? parsed.alternativeIndexes
         .filter((index) => Number.isInteger(index) && index >= 0 && index < products.length && index !== parsed.bestIndex)
         .slice(0, 2).map((index) => products[index]) : [],
+      nearestMatch,
       allProducts: products,
     };
   }
@@ -76,6 +85,7 @@ Respond with JSON:
   return {
     bestMatch: null,
     reasoning: 'I could not complete semantic product evaluation right now, so I will not guess a product. Please try again shortly.',
+    nearestMatch: null,
     allProducts: products,
   };
 }
