@@ -49,7 +49,15 @@ export async function getOrCreateOAuthSite(userId, { siteUrl, spendingCap = 1000
 }
 
 export async function getUserSites(userId) {
-  return getDb()`select * from connected_sites where user_id = ${userId} and status <> 'revoked' order by created_at desc`;
+  // A row is created before the merchant OAuth redirect so the encrypted PKCE
+  // attempt can be associated with a site. It is not a connected store until
+  // the merchant actually grants an access token.
+  return getDb()`
+    select * from connected_sites
+    where user_id = ${userId}
+      and status in ('active', 'paused')
+      and auth_token_ciphertext is not null
+    order by authorized_at desc nulls last, created_at desc`;
 }
 
 export async function updateSite(userId, googleSub, siteId, updates) {

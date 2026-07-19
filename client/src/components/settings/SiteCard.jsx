@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import api from '../../services/api';
-import { Storefront, Pencil, Plug } from '@phosphor-icons/react';
+import { Pencil, Plug, Pause, Play } from '@phosphor-icons/react';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmDialog from '../common/ConfirmDialog';
 
@@ -59,31 +59,13 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
 
 
   return (
-    <div className={`site-card glass-card ${site.status === 'paused' ? 'paused' : ''}`}>
-      <div className="site-card-header">
-        <div className="site-card-info">
-          <div className="sidebar-site-favicon">
-            <Storefront size={18} weight="duotone" />
-          </div>
-          <div>
-            <div className="site-card-name">{site.site_name}</div>
-            <div className="site-card-url">{site.site_url}</div>
-          </div>
-        </div>
-        <div className="site-card-status-row">
-          <button
-            className={`site-status-toggle ${site.status}`}
-            onClick={handleToggleStatus}
-            title={site.status === 'active' ? 'Pause this store' : 'Activate this store'}
-          >
-            {site.status === 'active' ? '● Active' : '○ Paused'}
-          </button>
-        </div>
-      </div>
-
+    <div className={`site-card glass-card store-control-card ${site.status === 'paused' ? 'paused' : ''}`}>
       <div className="site-card-body">
-        <div className="site-card-cap">
-          <span className="form-label">Daily Spending Cap</span>
+        <div className="site-card-cap store-cap-control">
+          <div>
+            <span className="form-label">Daily spending cap</span>
+            <p className="store-cap-help">Maximum the agent can spend with this store in one day.</p>
+          </div>
           {editing ? (
             <div className="site-cap-edit">
               <input
@@ -103,17 +85,24 @@ export default function SiteCard({ site, onUpdate, onRemove }) {
               </button>
             </div>
           ) : (
-            <div className="site-cap-display" onClick={() => setEditing(true)}>
+            <button type="button" className="site-cap-display" onClick={() => setEditing(true)} aria-label="Edit daily spending cap">
               <span className="site-cap-value">{site.spending_cap?.toLocaleString()} XLM</span>
               <span className="site-cap-edit-icon">
                 <Pencil size={12} />
               </span>
-            </div>
+            </button>
           )}
         </div>
       </div>
 
       <div className="site-card-footer">
+        <button
+          className="btn btn-secondary site-pause-btn"
+          onClick={handleToggleStatus}
+          disabled={saving || disconnecting}
+        >
+          {site.status === 'active' ? <><Pause size={14} /> Pause access</> : <><Play size={14} /> Resume access</>}
+        </button>
         <button
           className="btn btn-ghost site-remove-btn"
           onClick={() => setConfirmingDisconnect(true)}

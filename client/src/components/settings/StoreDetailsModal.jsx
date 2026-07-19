@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X } from '@phosphor-icons/react';
+import { CheckCircle, Storefront, X } from '@phosphor-icons/react';
 import SiteCard from './SiteCard';
 
 export default function StoreDetailsModal({ site, onClose, onUpdated, onDisconnected }) {
@@ -34,15 +34,25 @@ export default function StoreDetailsModal({ site, onClose, onUpdated, onDisconne
   return (
     <div className={`modal-overlay ${animateOut ? 'animate-out' : ''}`} onMouseDown={onClose}>
       <section className={`settings-panel store-details-modal ${animateOut ? 'animate-out' : ''}`} role="dialog" aria-modal="true" aria-labelledby="store-details-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="settings-header">
-          <div>
-            <p className="store-dialog-eyebrow">AUTHORIZED STOREFRONT</p>
-            <h2 id="store-details-title">{currentSite.site_name}</h2>
+        <header className="settings-header store-details-header">
+          <div className="store-details-identity">
+            <span className="store-details-icon"><Storefront size={19} weight="duotone" /></span>
+            <div>
+              <p className="store-dialog-eyebrow">CONNECTED STOREFRONT</p>
+              <h2 id="store-details-title">{currentSite.site_name}</h2>
+              <p className="store-details-url">{currentSite.site_url}</p>
+            </div>
           </div>
-          <button className="modal-close" onClick={onClose} aria-label="Close store controls"><X size={16} /></button>
+          <div className="store-details-header-actions">
+            <span className={`store-connection-state ${currentSite.status === 'paused' ? 'is-paused' : ''}`}><CheckCircle size={13} weight="fill" />{currentSite.status === 'paused' ? 'Paused' : 'Authorized'}</span>
+            <button className="modal-close" onClick={onClose} aria-label="Close store controls"><X size={16} /></button>
+          </div>
         </header>
-        <div className="settings-body">
-          <p className="form-hint">Limits and access controls are managed here. Safeguards synchronize automatically whenever they change, and again before a payment if needed.</p>
+        <div className="settings-body store-details-body">
+          <div className="store-details-notice">
+            <CheckCircle size={16} weight="fill" />
+            <p>Your store authorization is active. Spending rules update automatically when you change them and are verified again before payment.</p>
+          </div>
           <SiteCard
             site={currentSite}
             onUpdate={(updated) => { setCurrentSite(updated); onUpdated?.(updated); }}

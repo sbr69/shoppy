@@ -65,6 +65,10 @@ async function createSiteAndClient(userId, input) {
   const db = getDb();
   const cap = Number(input.spendingCap ?? 1000); const perCap = Number(input.perTransactionCap ?? cap);
   if (!Number.isFinite(cap) || !Number.isFinite(perCap) || cap < 0 || perCap < 0 || perCap > cap) throw new Error('Invalid spending limits');
+  const [existing] = await db`select id, status, auth_token_ciphertext from connected_sites where user_id = ${userId} and site_url = ${discovered.origin}`;
+  if (existing?.auth_token_ciphertext && ['active', 'paused'].includes(existing.status)) {
+    throw new Error('This store is already connected. Disconnect it first if you need to authorize a different store account.');
+  }
   const [site] = await db`insert into connected_sites (user_id, site_url, site_name, adapter_id, merchant_stellar_address, merchant_domain_hash, spending_cap, per_transaction_cap, status, oauth_server_metadata, agent_manifest) values (${userId}, ${discovered.origin}, ${new URL(discovered.origin).hostname}, 'agent-commerce-v1', ${discovered.commerce.settlement.merchant_stellar_address}, ${hash(new URL(discovered.origin).hostname)}, ${cap}, ${perCap}, 'pending_authorization', ${db.json(discovered.oauth)}, ${db.json(discovered.commerce)}) on conflict (user_id, site_url) do update set oauth_server_metadata = excluded.oauth_server_metadata, agent_manifest = excluded.agent_manifest, merchant_stellar_address = excluded.merchant_stellar_address, status = 'pending_authorization', updated_at = now() returning *`;
   const registration = await fetch(discovered.oauth.registrationUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'JarvisPayz Shopping Agent', redirect_uris: [callbackUrl()], token_endpoint_auth_method: 'client_secret_post', scope: REQUIRED_SCOPES.join(' ') }), signal: AbortSignal.timeout(10_000), redirect: 'error' });
   if (!registration.ok) throw new Error(`Store client registration failed (${registration.status})`);
@@ -97,9 +101,9 @@ export async function completeStoreOAuth({ code, state, error, errorDescription 
     if (!response.ok) throw new Error(`Token exchange failed (${response.status})`); const token = await response.json(); if (!token.access_token) throw new Error('Token response did not include an access token');
     const expiresAt = new Date(Date.now() + Number(token.expires_in || 900) * 1000).toISOString(); const sealed = encrypt(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token, tokenType: token.token_type || 'Bearer', expiresAt, scope: token.scope || client.scopes.join(' ') }), tokenScope(site.id));
     await db`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${expiresAt}, auth_scope = ${token.scope || client.scopes.join(' ')}, authorized_at = now(), status = 'active', updated_at = now() where id = ${site.id}`;
-    const [user] = await db`select id, google_sub from users where id = ${site.user_id}`;
+    const [user] = await db`select id, wallet_scope, google_sub from users where id = ${site.user_id}`;
     try {
-      await syncSitePolicy(user.id, user.google_sub, site.id);
+      await syncSitePolicy(user.id, user.wallet_scope || user.google_sub, site.id);
     } catch (policyError) {
       // The connection remains valid. Checkout will retry this automatically
       // before it can move funds, and the failure is visible on the store.
