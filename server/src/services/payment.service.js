@@ -1,7 +1,9 @@
 import { createHash } from 'crypto';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
+import { decrypt, encrypt } from './crypto.service.js';
 import { EcommerceAdapter } from './adapters/ecommerce.adapter.js';
+import { getProfile } from './profile.service.js';
 import { buildReceiptMemo } from './receipt.service.js';
 import { markIntentState } from './policy.service.js';
 import { prepareGuardedSpend, submitGuardedSpend, submitAgentSmartWalletSpend, getSorobanTransactionStatus } from './soroban.service.js';
@@ -21,6 +23,107 @@ function receiptFor(purchaseIntent, site, product) {
     currency: 'XLM',
     merchant: site.merchant_stellar_address,
     timestamp: new Date().toISOString(),
+  };
+}
+
+const invoiceScope = (purchaseId) => `purchase-invoice:${purchaseId}`;
+
+function numberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildInvoiceSnapshot(purchaseIntent, site, product, profile, totalXlm) {
+  const checkout = purchaseIntent.final_total_json && typeof purchaseIntent.final_total_json === 'object'
+    ? purchaseIntent.final_total_json
+    : {};
+  const quantity = Math.max(1, Number(purchaseIntent.quantity) || 1);
+  const rawItems = Array.isArray(checkout.items) && checkout.items.length ? checkout.items : [
+    { productId: product.id || null, name: product.name, quantity, priceAtPurchase: product.price },
+  ];
+  const items = rawItems.map((item) => {
+    const itemQuantity = Math.max(1, Number(item.quantity) || 1);
+    const unitPriceXlm = numberOrNull(item.priceAtPurchase ?? item.unit_price_xlm ?? item.price_xlm ?? product.price);
+    return {
+      productId: item.productId || item.product_id || product.id || null,
+      name: item.name || product.name,
+      image: item.image || product.image || null,
+      quantity: itemQuantity,
+      unitPriceXlm,
+      lineTotalXlm: numberOrNull(item.lineTotalXlm ?? item.line_total_xlm) ?? (unitPriceXlm == null ? null : unitPriceXlm * itemQuantity),
+    };
+  });
+  const subtotalXlm = numberOrNull(checkout.subtotal_xlm ?? checkout.subtotalXlm)
+    ?? items.reduce((sum, item) => sum + (item.lineTotalXlm || 0), 0);
+
+  return {
+    version: 1,
+    issuedAt: new Date().toISOString(),
+    merchant: {
+      name: site.site_name,
+      url: site.site_url,
+      orderId: checkout.orderId || checkout.order_id || checkout.checkout_id || purchaseIntent.merchant_order_id || null,
+      stellarAddress: checkout.merchant_stellar_address || site.merchant_stellar_address || null,
+    },
+    items,
+    totals: {
+      subtotalXlm,
+      shippingXlm: numberOrNull(checkout.shipping_xlm ?? checkout.shippingXlm) ?? 0,
+      taxXlm: numberOrNull(checkout.tax_xlm ?? checkout.taxXlm),
+      discountXlm: numberOrNull(checkout.discount_xlm ?? checkout.discountXlm) ?? 0,
+      totalXlm,
+    },
+    delivery: {
+      fullName: profile.fullName || null,
+      phone: profile.phone || null,
+      line1: profile.line1 || null,
+      city: profile.city || null,
+      state: profile.state || null,
+      postalCode: profile.postalCode || null,
+      country: profile.country || null,
+    },
+  };
+}
+
+function sealInvoice(invoice, purchaseId) {
+  const sealed = encrypt(JSON.stringify(invoice), invoiceScope(purchaseId));
+  return {
+    ciphertext: sealed.encrypted.toString('base64'),
+    iv: sealed.iv.toString('base64'),
+    authTag: sealed.authTag.toString('base64'),
+  };
+}
+
+export async function getPurchaseInvoice(userId, purchaseId) {
+  const [purchase] = await getDb()`
+    select p.*, cs.site_name, cs.site_url, pi.merchant_order_id
+    from purchases p
+    left join connected_sites cs on cs.id = p.site_id
+    left join purchase_intents pi on pi.id = p.purchase_intent_id
+    where p.id = ${purchaseId} and p.user_id = ${userId}`;
+  if (!purchase) return null;
+  let invoice = null;
+  if (purchase.invoice_ciphertext && purchase.invoice_iv && purchase.invoice_auth_tag) {
+    invoice = JSON.parse(decrypt(
+      Buffer.from(purchase.invoice_ciphertext, 'base64'),
+      Buffer.from(purchase.invoice_iv, 'base64'),
+      Buffer.from(purchase.invoice_auth_tag, 'base64'),
+      invoiceScope(purchase.purchase_intent_id),
+    ));
+  }
+  return {
+    purchase: {
+      id: purchase.id,
+      status: purchase.status,
+      transactionHash: purchase.stellar_tx_hash,
+      receiptMemoHash: purchase.receipt_memo_hash,
+      confirmedAt: purchase.confirmed_at,
+      createdAt: purchase.created_at,
+      explorerUrl: purchase.stellar_tx_hash
+        ? `https://stellar.expert/explorer/${config.stellarNetwork === 'mainnet' ? 'public' : 'testnet'}/tx/${purchase.stellar_tx_hash}`
+        : null,
+    },
+    invoice,
   };
 }
 
@@ -186,11 +289,12 @@ export async function getPurchaseHistory(userId) {
 export async function executeCustodialPayment(userId, googleSub, purchaseIntent, site, product) {
   const amount = Number(purchaseIntent.price_xlm);
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid verified payment amount');
-  const [smartWallet, ownerWallet, ownerKeypair, agentKeypair] = await Promise.all([
+  const [smartWallet, ownerWallet, ownerKeypair, agentKeypair, profileState] = await Promise.all([
     getAgentSmartWalletByUserId(userId),
     getWalletByUserId(userId),
     getOwnerKeypairForSigning(userId, googleSub),
     getAgentKeypairForSigning(userId, googleSub),
+    getProfile(userId),
   ]);
   if (!smartWallet?.contract_id || smartWallet.status !== 'active') throw new Error('Agent Smart Wallet is not ready. Fund your wallet before approving a purchase.');
   if (!ownerWallet?.public_key || ownerWallet.status !== 'active') throw new Error('Custodial owner authorization is unavailable');
@@ -207,7 +311,9 @@ export async function executeCustodialPayment(userId, googleSub, purchaseIntent,
     intentHashHex: createHash('sha256').update(purchaseIntent.id).digest('hex'),
     receiptHash,
   });
-  const [purchase] = await getDb()`insert into purchases (user_id, site_id, purchase_intent_id, product_name, product_url, product_image, price_xlm, stellar_tx_hash, receipt_memo_hash, status) values (${userId}, ${site.id}, ${purchaseIntent.id}, ${product.name}, ${product.url || null}, ${product.image || null}, ${amount}, ${submitted.txHash}, ${receiptHash.toString('hex')}, ${submitted.final ? 'payment_confirmed' : 'pending'}) on conflict (purchase_intent_id) do update set stellar_tx_hash = excluded.stellar_tx_hash returning *`;
+  const invoice = buildInvoiceSnapshot(purchaseIntent, site, product, profileState.profile || {}, amount);
+  const sealedInvoice = sealInvoice(invoice, purchaseIntent.id);
+  const [purchase] = await getDb()`insert into purchases (user_id, site_id, purchase_intent_id, product_name, product_url, product_image, price_xlm, stellar_tx_hash, receipt_memo_hash, status, invoice_ciphertext, invoice_iv, invoice_auth_tag) values (${userId}, ${site.id}, ${purchaseIntent.id}, ${product.name}, ${product.url || null}, ${product.image || null}, ${amount}, ${submitted.txHash}, ${receiptHash.toString('hex')}, ${submitted.final ? 'payment_confirmed' : 'pending'}, ${sealedInvoice.ciphertext}, ${sealedInvoice.iv}, ${sealedInvoice.authTag}) on conflict (purchase_intent_id) do update set stellar_tx_hash = excluded.stellar_tx_hash returning *`;
   await markIntentState(purchaseIntent.id, submitted.final ? 'payment_confirmed' : 'payment_submitted', { policy_tx_hash: submitted.txHash });
   await getDb()`insert into audit_events (user_id, purchase_intent_id, event_type, payload) values (${userId}, ${purchaseIntent.id}, 'custodial_payment_submitted', ${getDb().json({ txHash: submitted.txHash, amountXlm: amount })})`;
 

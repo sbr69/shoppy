@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { getPurchaseHistory } from '../services/payment.service.js';
+import { getPurchaseHistory, getPurchaseInvoice } from '../services/payment.service.js';
 import { getWorkflowEvents } from '../services/workflow.service.js';
 
 const router = Router();
@@ -39,6 +39,16 @@ router.get('/:id/workflow', authenticate, async (req, res, next) => {
     const [purchase] = await getPurchaseHistory(req.user.userId).then((purchases) => purchases.filter((item) => item.id === req.params.id));
     if (!purchase) return res.status(404).json({ error: 'Purchase not found' });
     return res.json({ events: await getWorkflowEvents(req.user.userId, { purchaseIntentId: purchase.purchase_intent_id }) });
+  } catch (error) { return next(error); }
+});
+
+// Invoice snapshots contain encrypted delivery details. They are only
+// decrypted after ownership is verified and are never stored in chat metadata.
+router.get('/:id/invoice', authenticate, async (req, res, next) => {
+  try {
+    const result = await getPurchaseInvoice(req.user.userId, req.params.id);
+    if (!result) return res.status(404).json({ error: 'Purchase not found' });
+    return res.json(result);
   } catch (error) { return next(error); }
 });
 

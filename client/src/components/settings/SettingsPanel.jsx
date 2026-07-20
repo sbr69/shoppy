@@ -1,8 +1,20 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { X, User, MapPin, Gear, FloppyDisk } from '@phosphor-icons/react';
+import { X, User, MapPin, Gear, FloppyDisk, Flask } from '@phosphor-icons/react';
+import { useToast } from '../../contexts/ToastContext';
+
+const TEST_DELIVERY_PROFILE = {
+  fullName: 'Test Shopper',
+  phone: '+1 555 010 2048',
+  line1: '123 Test Market Lane',
+  city: 'Testville',
+  state: 'CA',
+  postalCode: '94105',
+  country: 'United States',
+};
 
 export default function SettingsPanel({ isOpen, onClose }) {
+  const toast = useToast();
   const [profile, setProfile] = useState({ fullName: '', phone: '', line1: '', city: '', state: '', postalCode: '', country: '' });
   const [savingProfile, setSavingProfile] = useState(false);
   const [shouldRender, setShouldRender] = useState(isOpen);
@@ -27,6 +39,19 @@ export default function SettingsPanel({ isOpen, onClose }) {
 
   const handleChange = (key, value) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const fillTestDeliveryDetails = async () => {
+    setSavingProfile(true);
+    try {
+      const { data } = await api.put('/profile', TEST_DELIVERY_PROFILE);
+      setProfile((current) => ({ ...current, ...(data.profile || TEST_DELIVERY_PROFILE) }));
+      toast.success('Test delivery details saved.');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not save test delivery details.');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
@@ -87,6 +112,16 @@ export default function SettingsPanel({ isOpen, onClose }) {
             <p className="form-hint" style={{ marginBottom: 12 }}>
               Used automatically during authorized express checkout orders.
             </p>
+            <div className="settings-test-profile">
+              <div>
+                <strong>Testing on Stellar testnet?</strong>
+                <span>Save a safe placeholder delivery address for TestMarket orders.</span>
+              </div>
+              <button type="button" className="btn btn-secondary settings-test-profile-button" onClick={fillTestDeliveryDetails} disabled={savingProfile}>
+                <Flask size={15} weight="bold" />
+                Use test details
+              </button>
+            </div>
 
             <label className="form-group">
               <span className="form-label">Street Address</span>
