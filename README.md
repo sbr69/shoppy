@@ -116,7 +116,7 @@ The protected pre-hardening baseline is commit [`902aafb`](RECOVERY.md). Read [R
 
 ## Public evidence checklist
 
-The agent itself does not have a verified public demo URL in this repository yet. Do not present the merchant demo as an agent deployment. Before submission, capture the required screenshots and demo video listed in [docs/evidence/README.md](docs/evidence/README.md), then replace the placeholders below.
+Before submission, verify the deployed agent URL and capture the redacted evidence listed in [docs/evidence/README.md](docs/evidence/README.md). Do not present the merchant demo as an agent deployment.
 
 | Submission item | Add here when ready |
 | --- | --- |
@@ -126,6 +126,8 @@ The agent itself does not have a verified public demo URL in this repository yet
 | Monitoring / analytics screenshot | `docs/evidence/observability.png` |
 | Stellar Explorer payment proof | `ADD_TESTNET_TRANSACTION_URL_HERE` |
 | Demo video | `ADD_DEMO_VIDEO_URL_HERE` |
+| 10+ wallet-interaction proof | `docs/evidence/wallet-interactions.md` |
+| Basic user-feedback summary | `docs/evidence/user-feedback.md` |
 
 ### Screenshot space
 
@@ -136,5 +138,27 @@ The agent itself does not have a verified public demo URL in this repository yet
 <!-- Add the mobile responsive screenshot here once captured. -->
 
 ![JarvisPayz mobile dashboard — add screenshot](docs/evidence/dashboard-mobile.png)
+
+<!-- Add a redacted Sentry and/or PostHog dashboard screenshot here once captured. -->
+
+![JarvisPayz observability — add screenshot](docs/evidence/observability.png)
+
+### Demo video space
+
+<!-- Replace this placeholder with a public or reviewer-accessible demo video URL. The video should show: login, wallet restore/funding, store OAuth, semantic search, basket/checkout approvals, direct Stellar payment, and invoice/Explorer proof. -->
+
+`ADD_DEMO_VIDEO_URL_HERE`
+
+### Wallet-interaction evidence space
+
+<!-- Add a redacted table or link proving at least 10 distinct testnet wallet interactions. Include the interaction type, timestamp, transaction hash/Explorer link where applicable, and result. Do not include private keys or user PII. -->
+
+`docs/evidence/wallet-interactions.md`
+
+### Basic user-feedback summary space
+
+<!-- Add a short anonymized summary: participant count, test tasks, positive findings, issues, and changes made or deferred. -->
+
+`docs/evidence/user-feedback.md`
 
 Keep all evidence redacted: never show private keys, Google account details, OAuth tokens, delivery data, database URLs, or deployment credentials.
