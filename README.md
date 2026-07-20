@@ -1,164 +1,111 @@
 # JarvisPayz Agent
 
-JarvisPayz is a **testnet shopping agent** that gives each signed-in user a managed Stellar smart wallet and lets them search and buy only through ecommerce stores they explicitly authorize with OAuth.
+JarvisPayz Agent is a testnet AI shopping application that lets users discover products from OAuth-authorized ecommerce stores, build a basket through chat, approve a merchant-verified XLM total, and pay directly from a policy-controlled Stellar smart wallet.
 
-> Status: testnet beta. It uses test XLM only and is not approved for real-money or production-mainnet use.
+The project is currently designed for **Stellar testnet** and uses **test XLM only**.
 
-## What the user experiences
+## Live demo
 
-1. Sign in with Google.
-2. JarvisPayz creates or restores the same managed Stellar wallet linked to that account.
-3. Fund the test wallet through Friendbot when needed.
-4. Connect an ecommerce store by pasting its URL and completing that store's OAuth sign-in.
-5. Ask naturally for an item. The agent interprets needs and constraints, searches only authorized stores, and presents one safe match.
-6. The user approves once to reserve and verify the merchant order, then approves the exact XLM total a second time.
-7. The Agent Smart Wallet checks the merchant, limits, and duplicate intent on Stellar before paying the merchant directly. A receipt and Stellar Explorer link are then shown.
+[jarvispayz-agent.vercel.app](https://jarvispayz-agent.vercel.app/)
 
-No browser extension, seed phrase, or manually connected wallet is required for this testnet flow.
+## Product overview
+
+Users sign in to JarvisPayz and receive a persistent managed Agent Smart Wallet. After connecting an ecommerce store through its OAuth flow, they can use natural language to search the authorized catalog, compare relevant products, add items and quantities to a basket, and request checkout.
+
+The merchant calculates the exact XLM total before payment. The user then approves that exact amount. The Agent Smart Wallet validates the merchant, transaction limit, daily limit, wallet balance, and purchase-intent uniqueness on Stellar before transferring XLM directly to the merchant. A confirmed purchase includes an invoice and a Stellar Explorer transaction link.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  User[Google-signed-in user] --> Web[React workspace]
-  Web --> API[Node / Express API]
-  API --> DB[(Supabase Postgres)]
-  API --> LLM[Semantic intent + ranking]
-  API <--> Merchant[OAuth-authorized merchant agent API]
-  API --> Owner[Encrypted custodial owner signer]
-  API --> Agent[Encrypted constrained agent signer]
-  Owner --> Wallet[Per-user Agent Smart Wallet]
-  Agent --> Wallet
-  Wallet --> Trust[TrustList policy]
-  Trust --> Wallet
-  Wallet -->|direct guarded payment| MerchantWallet[Merchant Stellar address]
-```
+| Layer | Technology | Responsibility |
+| --- | --- | --- |
+| Web application | React, Vite | Responsive chat workspace, wallet visibility, store connection, settings, invoices, and activity. |
+| API and orchestration | Node.js, Express | Authentication, merchant OAuth, semantic shopping flow, basket/checkout state, custody, payment, and reconciliation. |
+| Data layer | Supabase PostgreSQL | Durable user, session, store, checkout, purchase, reconciliation, and encrypted invoice data. |
+| Smart contracts | Rust, Soroban | Merchant trust rules and direct policy-controlled wallet transfers. |
+| Merchant integration | OAuth 2.0 + PKCE, agent-commerce APIs | Authorized catalog search, checkout preparation, payment confirmation, and order status. |
+| Observability | Sentry, PostHog | Privacy-safe error monitoring and aggregate product analytics when configured. |
 
-The merchant is never hardwired into the agent backend. A store is available only after its metadata discovery and OAuth authorization flow succeed for that user.
+## Core safeguards
 
-## Testnet contracts
+- OAuth-authorized stores only; JarvisPayz never receives a merchant password.
+- Search and product recommendations never move funds.
+- Checkout requires merchant verification of the exact final XLM amount.
+- The user provides a final approval before payment.
+- Each user has a dedicated Agent Smart Wallet; payment is direct to the authorized merchant, not escrowed.
+- On-chain policy enforces merchant allowlisting, per-transaction limits, daily limits, balance checks, and duplicate-intent prevention.
+- Merchant confirmation is reconciled durably without retrying an already submitted payment.
+- Custodial signing keys, OAuth tokens, delivery profiles, and invoice snapshots are encrypted at rest.
 
-| Purpose | Stellar testnet address |
+## Stellar testnet contracts
+
+| Contract | Deployment | Role |
+| --- | --- | --- |
+| TrustList | [`CCF7TJNLJUFTQYQSJH3BUBF6E6DPWGG4T6LIH5PVET4TJKOMNIHDEZKK`](https://stellar.expert/explorer/testnet/contract/CCF7TJNLJUFTQYQSJH3BUBF6E6DPWGG4T6LIH5PVET4TJKOMNIHDEZKK) | Shared merchant trust and spending-policy rules. |
+| SpendGuard | [`CCM46FWI7N43QETVUQUS5QPIGCOEKIF4IKHEO2XNPIQGMMJC2FAARNMO`](https://stellar.expert/explorer/testnet/contract/CCM46FWI7N43QETVUQUS5QPIGCOEKIF4IKHEO2XNPIQGMMJC2FAARNMO) | Legacy policy contract retained for compatibility; not the current direct-payment route. |
+| Agent Smart Wallet | Per-user `C...` contract address | Holds test XLM and performs the live direct merchant-payment flow. Each user’s address is available in the dashboard wallet panel. |
+
+## Submission evidence
+
+### Product UI
+
+<!-- Add the final desktop dashboard screenshot here. -->
+
+![Product UI screenshot — pending](docs/evidence/dashboard-desktop.png)
+
+### Mobile responsive design
+
+<!-- Add the final mobile dashboard screenshot here. -->
+
+![Mobile responsive screenshot — pending](docs/evidence/dashboard-mobile.png)
+
+### Monitoring and analytics
+
+<!-- Add a redacted Sentry or PostHog dashboard screenshot here. -->
+
+![Monitoring and analytics screenshot — pending](docs/evidence/observability.png)
+
+### Demo video
+
+`ADD_DEMO_VIDEO_LINK_HERE`
+
+### Proof of 10+ user wallet interactions
+
+Each completed interaction should link to Stellar Expert using the associated user Agent Smart Wallet transaction hash.
+
+| # | Interaction | Transaction hash | Result |
+| --- | --- | --- | --- |
+| 1 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 2 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 3 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 4 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 5 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 6 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 7 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 8 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 9 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+| 10 | Pending | `ADD_TRANSACTION_HASH` | Pending |
+
+Transaction links use this format:
+
+`https://stellar.expert/explorer/testnet/tx/TRANSACTION_HASH`
+
+### Basic user-feedback summary
+
+| Measure | Summary |
 | --- | --- |
-| TrustList policy | `CCF7TJNLJUFTQYQSJH3BUBF6E6DPWGG4T6LIH5PVET4TJKOMNIHDEZKK` |
-| SpendGuard (legacy / policy contract) | `CCM46FWI7N43QETVUQUS5QPIGCOEKIF4IKHEO2XNPIQGMMJC2FAARNMO` |
-| Native-XLM Stellar Asset contract | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
-| Agent Smart Wallet WASM hash | `892f964953c5bb9fa2ebfe41b42e05f9f78c145fd6fc4482fc134ec4542d979b` |
+| Participants | `ADD_PARTICIPANT_COUNT` |
+| Test scenarios | `ADD_TEST_SCENARIOS` |
+| Positive findings | `ADD_SUMMARY` |
+| Improvements identified | `ADD_SUMMARY` |
+| Follow-up status | `ADD_STATUS` |
 
-Each user gets a separate Agent Smart Wallet contract (`C...` address). The wallet holds XLM and transfers directly to an approved merchant; it is not an escrow. The existing SpendGuard contract remains documented for policy compatibility, while the live purchase path is enforced by the Agent Smart Wallet plus TrustList.
+## Project status
 
-## Safety model
+JarvisPayz is a functional testnet MVP with a deployed Stellar policy layer, managed smart wallets, merchant OAuth, agent-driven shopping, direct guarded payments, invoices, durable reconciliation, monitoring hooks, and analytics hooks. It is not a real-money or mainnet product.
 
-- **Explicit store consent:** OAuth tokens are encrypted at rest and scoped to merchant search, checkout, and order confirmation.
-- **Two explicit confirmations:** search never pays; checkout total is verified before the second approval.
-- **On-chain policy:** merchant address, domain rule, per-transaction cap, daily cap, and one-time purchase intent are checked atomically before an XLM transfer.
-- **Custodial signing:** the API can sign because this is the managed-wallet model requested for the project. Private keys are encrypted at rest with separate owner/agent scopes. Keep `MASTER_SECRET` in a managed secret store and rotate it deliberately.
-- **Fail closed:** if semantic interpretation, merchant verification, policy sync, or payment verification fails, no payment is submitted.
-- **Reconciliation:** merchant confirmation retries are durable in Postgres and never resubmit a payment.
+## Documentation
 
-## Repository layout
-
-| Directory | Responsibility |
-| --- | --- |
-| `client/` | Vite + React workspace, responsive UI, accessibility states, optional client telemetry |
-| `server/` | Express API, Google authentication, merchant OAuth, semantic orchestration, custody, payment and reconciliation |
-| `contracts/` | Soroban TrustList, SpendGuard, Agent Smart Wallet, and shared policy interface |
-| `supabase/migrations/` | PostgreSQL schema, RLS/policy data, durable reconciliation jobs |
-| `docs/` | Testing, deployment, privacy, evidence, and recovery guidance |
-
-## Local setup
-
-Prerequisites: Node.js 24+, Rust/Cargo, Stellar CLI if redeploying contracts, and a Supabase project.
-
-1. Copy `server/.env.example` to `server/.env` and provide server-only secrets and Supabase connection string.
-2. Copy `client/.env.example` to `client/.env` and set the public Google client ID.
-3. Apply the schema with `npx supabase db push` from the repository root.
-4. Install and run the server:
-
-   ```powershell
-   cd server
-   npm install
-   npm run dev
-   ```
-
-5. Install and run the client in a second terminal:
-
-   ```powershell
-   cd client
-   npm install
-   npm run dev
-   ```
-
-See [deployment guidance](docs/DEPLOYMENT.md) before exposing the testnet build publicly.
-
-## Verification commands
-
-```powershell
-cd client; npm run lint; npm run test; npm run build
-cd ../server; npm test
-cd ..; cargo test --workspace; cargo build --workspace --release
-```
-
-The manual end-to-end matrix is in [docs/TESTING.md](docs/TESTING.md). It covers success, policy rejection, duplicate approval, OAuth revocation, merchant outage, expired checkout, and reconciliation.
-
-## Privacy-safe monitoring and analytics
-
-Sentry and PostHog are included but disabled by default. Add their free-tier values only through ignored environment files or deployment secrets:
-
-- `SENTRY_DSN` / `VITE_SENTRY_DSN` for error monitoring.
-- `VITE_POSTHOG_KEY` for aggregate product events.
-
-The integration intentionally excludes chat text, wallet addresses, XLM amounts, delivery data, OAuth tokens, headers, cookies, and secrets. It also disables session recording and automatic event capture. Details: [docs/PRIVACY.md](docs/PRIVACY.md).
-
-## Recovery
-
-The protected pre-hardening baseline is commit [`902aafb`](RECOVERY.md). Read [RECOVERY.md](RECOVERY.md) before reverting anything; the documented procedure makes the working tree recoverable without pushing or rewriting remote history.
-
-## Public evidence checklist
-
-Before submission, verify the deployed agent URL and capture the redacted evidence listed in [docs/evidence/README.md](docs/evidence/README.md). Do not present the merchant demo as an agent deployment.
-
-| Submission item | Add here when ready |
-| --- | --- |
-| Live testnet agent demo | `ADD_PUBLIC_AGENT_URL_HERE` |
-| Desktop product UI screenshot | `docs/evidence/dashboard-desktop.png` |
-| Mobile responsive screenshot | `docs/evidence/dashboard-mobile.png` |
-| Monitoring / analytics screenshot | `docs/evidence/observability.png` |
-| Stellar Explorer payment proof | `ADD_TESTNET_TRANSACTION_URL_HERE` |
-| Demo video | `ADD_DEMO_VIDEO_URL_HERE` |
-| 10+ wallet-interaction proof | `docs/evidence/wallet-interactions.md` |
-| Basic user-feedback summary | `docs/evidence/user-feedback.md` |
-
-### Screenshot space
-
-<!-- Add the desktop dashboard screenshot here once captured. -->
-
-![JarvisPayz desktop dashboard — add screenshot](docs/evidence/dashboard-desktop.png)
-
-<!-- Add the mobile responsive screenshot here once captured. -->
-
-![JarvisPayz mobile dashboard — add screenshot](docs/evidence/dashboard-mobile.png)
-
-<!-- Add a redacted Sentry and/or PostHog dashboard screenshot here once captured. -->
-
-![JarvisPayz observability — add screenshot](docs/evidence/observability.png)
-
-### Demo video space
-
-<!-- Replace this placeholder with a public or reviewer-accessible demo video URL. The video should show: login, wallet restore/funding, store OAuth, semantic search, basket/checkout approvals, direct Stellar payment, and invoice/Explorer proof. -->
-
-`ADD_DEMO_VIDEO_URL_HERE`
-
-### Wallet-interaction evidence space
-
-<!-- Add a redacted table or link proving at least 10 distinct testnet wallet interactions. Include the interaction type, timestamp, transaction hash/Explorer link where applicable, and result. Do not include private keys or user PII. -->
-
-`docs/evidence/wallet-interactions.md`
-
-### Basic user-feedback summary space
-
-<!-- Add a short anonymized summary: participant count, test tasks, positive findings, issues, and changes made or deferred. -->
-
-`docs/evidence/user-feedback.md`
-
-Keep all evidence redacted: never show private keys, Google account details, OAuth tokens, delivery data, database URLs, or deployment credentials.
+- [Product requirements](PRD.md)
+- [System architecture and blockchain migration guide](architecture.md)
+- [Privacy and telemetry boundaries](docs/PRIVACY.md)
+- [Test coverage and validation matrix](docs/TESTING.md)
