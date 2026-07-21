@@ -7,6 +7,7 @@ JarvisPayz allows users to sign in, receive a persistent custodial smart wallet,
 | | |
 |---|---|
 | **Live Demo** | [jarvispayz-agent.vercel.app](https://jarvispayz-agent.vercel.app) |
+| **Test Merchant** | [test-market-theta.vercel.app](https://test-market-theta.vercel.app) |
 | **Network** | Stellar Testnet (Soroban) |
 | **Settlement Asset** | Native XLM (test) |
 | **Status** | Testnet demonstration |
@@ -19,13 +20,9 @@ JarvisPayz allows users to sign in, receive a persistent custodial smart wallet,
 - [Architecture](#architecture)
 - [Smart Contracts](#smart-contracts)
 - [Technology Stack](#technology-stack)
-- [Repository Structure](#repository-structure)
 - [Core Features](#core-features)
 - [Security Model](#security-model)
-- [API Surface](#api-surface)
 - [Getting Started](#getting-started)
-- [Deployment](#deployment)
-- [Observability](#observability)
 - [Contract Addresses](#contract-addresses)
 - [User Wallet Interactions](#user-wallet-interactions)
 - [Screenshots](#screenshots)
@@ -65,6 +62,10 @@ flowchart TB
         Custody["Encrypted Custody\n(Owner + Agent Signers)"]
     end
 
+    subgraph Merchant ["Merchant Plane"]
+        TestMarket["TestMarket\n(Reference Merchant)"]
+    end
+
     subgraph Settlement ["Settlement and Policy Plane"]
         Wallet["AgentWallet Contract\n(Per-User Smart Wallet)"]
         TrustList["TrustList Contract\n(Policy Rules)"]
@@ -76,6 +77,7 @@ flowchart TB
     API <--> DB
     API --> AI
     API <--> OAuth
+    OAuth <--> TestMarket
     API --> Custody
     Custody --> Wallet
     Wallet --> TrustList
@@ -84,19 +86,11 @@ flowchart TB
 
 ### Three-Plane Design
 
-The system is organized into three distinct trust boundaries:
+**1. Experience and Orchestration Plane** -- The React dashboard and Express API handle identity (Google OAuth / Stellar wallet sign-in), chat session management, AI-driven product search and ranking, merchant OAuth connection lifecycle, basket state, checkout preparation, invoice encryption, and purchase reconciliation.
 
-**1. Experience and Orchestration Plane**
+**2. Merchant Plane** -- Independently deployed ecommerce stores expose OAuth authorization server metadata, agent-commerce metadata, and scoped APIs for catalog search, checkout preparation, payment confirmation, and order management. [TestMarket](https://test-market-theta.vercel.app) is the reference merchant used for integration testing. JarvisPayz connects to any compatible merchant through URL discovery and standard OAuth -- there is no hard-coded merchant integration.
 
-The React dashboard and Express API handle identity (Google OAuth / Stellar wallet sign-in), chat session management, AI-driven product search and ranking, merchant OAuth connection lifecycle, basket state, checkout preparation, invoice encryption, and purchase reconciliation.
-
-**2. Merchant Plane**
-
-Independently deployed ecommerce stores expose OAuth authorization server metadata, agent-commerce metadata, and scoped APIs for catalog search, checkout preparation, payment confirmation, and order management. JarvisPayz connects to any compatible merchant through URL discovery and standard OAuth -- there is no hard-coded merchant integration.
-
-**3. Settlement and Policy Plane**
-
-Per-user Soroban smart wallets hold spendable XLM. The AgentWallet contract enforces every spend against the TrustList policy contract before executing an atomic direct transfer to the merchant. No escrow, no intermediary.
+**3. Settlement and Policy Plane** -- Per-user Soroban smart wallets hold spendable XLM. The AgentWallet contract enforces every spend against the TrustList policy contract before executing an atomic direct transfer to the merchant. No escrow, no intermediary.
 
 ### End-to-End Payment Flow
 
@@ -207,8 +201,6 @@ A per-user programmable wallet that holds spendable XLM and enforces policy on e
 
 A policy registry mapping `(owner, domain_hash)` to merchant trust rules.
 
-**Public interface:**
-
 | Function | Purpose |
 |---|---|
 | `initialize()` | One-time contract initialization. |
@@ -218,10 +210,6 @@ A policy registry mapping `(owner, domain_hash)` to merchant trust rules.
 
 **TrustRule structure:** `{ merchant: Address, daily_limit: i128, per_transaction_limit: i128, category: Symbol, enabled: bool, version: u32 }`
 
-### PolicyInterface (`contracts/policy-interface`)
-
-Shared Soroban types and client interfaces consumed by both AgentWallet and TrustList.
-
 ### SpendGuard (`contracts/spend-guard`)
 
 Legacy escrow-based policy contract retained for compatibility and audit history. Not used in the current direct-wallet payment route.
@@ -230,118 +218,13 @@ Legacy escrow-based policy contract retained for compatibility and audit history
 
 ## Technology Stack
 
-### Frontend
-
-| Technology | Version | Purpose |
-|---|---|---|
-| React | 19.x | UI framework |
-| Vite | 8.x | Build toolchain and dev server |
-| React Router | 7.x | Client-side routing |
-| Stellar SDK | 16.x | Stellar network interaction |
-| Stellar Wallets Kit | 1.x | Browser wallet sign-in (identity only) |
-| Google OAuth | 0.13.x | Primary authentication |
-| Axios | 1.x | HTTP client |
-| Phosphor Icons | 2.x | Icon system |
-| Sentry React | 10.x | Error monitoring (optional) |
-| PostHog | 1.x | Product analytics (optional) |
-
-### Backend
-
-| Technology | Version | Purpose |
-|---|---|---|
-| Node.js | 22 (Alpine) | Runtime |
-| Express | 5.x | HTTP framework |
-| Stellar SDK | 16.x | Soroban RPC and Horizon integration |
-| Google Generative AI | 0.24.x | Gemini-powered intent parsing and product ranking |
-| PostgreSQL (Supabase) | -- | Persistent state, encrypted secrets, chat memory |
-| JSON Web Tokens | 9.x | Session authentication |
-| Helmet | 8.x | Security headers |
-| google-auth-library | 10.x | Server-side Google credential verification |
-
-### Smart Contracts
-
-| Technology | Version | Purpose |
-|---|---|---|
-| Rust | stable | Contract language |
-| Soroban SDK | 25.0.1 | Stellar smart contract framework |
-| Soroban Runtime | -- | On-chain execution environment |
-
-### Infrastructure
-
-| Service | Purpose |
+| Layer | Technologies |
 |---|---|
-| Vercel | Frontend hosting (static SPA deployment) |
-| Railway | Backend API hosting (Dockerized Node.js) |
-| Supabase | Managed PostgreSQL with connection pooling |
-| Stellar Testnet | Blockchain settlement and policy enforcement |
-
----
-
-## Repository Structure
-
-```
-agent/
-|-- client/                         # Frontend (React + Vite)
-|   |-- src/
-|   |   |-- components/
-|   |   |   |-- chat/               # ChatWindow, MessageBubble, ProductCard, ReceiptCard
-|   |   |   |-- common/             # ErrorBoundary, StellarWalletLoginButton
-|   |   |   |-- layout/             # AppLayout (sidebar + main content)
-|   |   |   |-- settings/           # ConnectSiteModal, SettingsPanel, SiteCard, StoreDetailsModal
-|   |   |   |-- Hero.jsx            # Landing page hero
-|   |   |   |-- Features.jsx        # Feature showcase
-|   |   |   |-- WalletCard.jsx      # Wallet balance and activity display
-|   |   |   +-- ...
-|   |   |-- contexts/               # AuthContext, ToastContext
-|   |   |-- pages/                  # Landing, Dashboard, NotFound
-|   |   |-- services/               # API client layer
-|   |   +-- styles/                 # CSS stylesheets
-|   |-- index.html
-|   |-- vite.config.js
-|   +-- vercel.json
-|
-|-- server/                         # Backend (Express API)
-|   |-- src/
-|   |   |-- config/                 # Environment configuration
-|   |   |-- db/                     # Supabase PostgreSQL connection
-|   |   |-- middleware/             # JWT auth, rate limiting
-|   |   |-- routes/                 # auth, wallet, chat, sites, purchases, profile
-|   |   |-- services/
-|   |   |   |-- agent.service.js            # Orchestration engine and conversation state machine
-|   |   |   |-- auth.service.js             # Google/Stellar identity verification
-|   |   |   |-- payment.service.js          # Settlement submission and reconciliation
-|   |   |   |-- wallet.service.js           # Managed wallet lifecycle and encryption
-|   |   |   |-- soroban.service.js          # Soroban RPC interactions
-|   |   |   |-- site-oauth.service.js       # Merchant OAuth (PKCE, discovery, token management)
-|   |   |   |-- intent.service.js           # Natural-language intent parsing (Gemini)
-|   |   |   |-- product.service.js          # Product search and ranking
-|   |   |   |-- crypto.service.js           # AES-256-GCM encryption primitives
-|   |   |   |-- conversation-memory.service.js  # Durable chat context
-|   |   |   |-- observability.service.js    # Sentry and PostHog integration
-|   |   |   +-- ...
-|   |   +-- index.js                # Server entry point
-|   +-- Dockerfile
-|
-|-- contracts/                      # Soroban smart contracts (Rust)
-|   |-- agent-wallet/               # Per-user programmable wallet
-|   |-- trust-list/                 # Merchant policy registry
-|   |-- spend-guard/                # Legacy escrow contract (historical)
-|   +-- policy-interface/           # Shared types and client interface
-|
-|-- supabase/
-|   +-- migrations/                 # 16 sequential PostgreSQL migrations
-|
-|-- docs/
-|   |-- DEPLOYMENT.md               # Deployment guide
-|   |-- PRIVACY.md                  # Privacy policy and data handling
-|   |-- TESTING.md                  # Testing procedures
-|   +-- evidence/                   # Submission evidence assets
-|
-|-- Cargo.toml                      # Rust workspace root
-|-- Dockerfile                      # Railway deployment (server)
-|-- railway.toml                    # Railway configuration
-+-- PRD.md                          # Product Requirements Document
-```
+| **Frontend** | React 19, Vite 8, React Router 7, Stellar SDK 16, Stellar Wallets Kit, Google OAuth, Phosphor Icons |
+| **Backend** | Node.js 22, Express 5, Stellar SDK 16, Google Generative AI (Gemini), PostgreSQL (Supabase), JWT, Helmet |
+| **Smart Contracts** | Rust, Soroban SDK 25.0.1 |
+| **Infrastructure** | Vercel (frontend), Railway (API), Supabase (database), Stellar Testnet (settlement) |
+| **Observability** | Sentry (error tracking, optional), PostHog (aggregate analytics, optional) |
 
 ---
 
@@ -349,14 +232,14 @@ agent/
 
 ### Identity and Managed Wallet
 
-- **Google sign-in** as the primary identity provider. Stellar wallet sign-in is supported as an alternative identity method.
-- First login creates a user record and exactly one set of custody accounts: owner signer, constrained agent signer, and Agent Smart Wallet (`C...` address).
+- **Google sign-in** as the primary identity provider. Stellar wallet sign-in supported as an alternative.
+- First login creates one user record and exactly one set of custody accounts: owner signer, constrained agent signer, and Agent Smart Wallet (`C...` address).
 - Repeat login restores the existing wallet and balance -- no replacement, no reset.
-- Friendbot integration for testnet funding. Funds flow from Friendbot to the custodial owner account, then into the smart wallet.
+- Friendbot integration for testnet funding.
 
 ### Store Connection via OAuth
 
-- User provides a merchant HTTPS URL and daily XLM cap.
+- User provides a merchant HTTPS URL (e.g., [test-market-theta.vercel.app](https://test-market-theta.vercel.app)) and daily XLM cap.
 - JarvisPayz discovers `/.well-known/oauth-authorization-server` and `/.well-known/agent-commerce` metadata.
 - Standard Authorization Code flow with PKCE (S256). Dynamic client registration when required.
 - Encrypted token storage. Merchant policy rules synchronized to the TrustList contract on connection.
@@ -367,39 +250,24 @@ agent/
 - AI-powered intent parsing using Google Gemini for structured shopping intent extraction.
 - Constrained to authorized merchant catalogs only -- no arbitrary web scraping.
 - Semantic product search with controlled query expansion, ranking, and safe fallback browsing.
-- Follow-up scoping: "which has the best review?" ranks the currently shown candidates, not the entire catalog.
 - Durable conversation memory persisted in PostgreSQL for multi-turn shopping context.
 
-### Basket and Checkout
+### Basket, Checkout, and Payment
 
 - Multi-item basket with quantity management.
 - Checkout requires explicit user instruction after basket completion.
 - Merchant-side checkout preparation returns the exact XLM total, shipping, order ID, and payment destination.
-- Destination verification against the trusted merchant address from the TrustList.
-- Time-limited quotes with expiry enforcement.
-
-### On-Chain Payment
-
 - Dual-authorization (owner + constrained agent) for every `spend` call.
 - Atomic policy enforcement: merchant trust, amount limits, daily caps, duplicate intent, and balance checks.
 - Direct wallet-to-merchant XLM transfer. No escrow, no intermediary.
-- On-chain `WalletPurchaseEvent` emission with receipt hash.
 - Encrypted invoice snapshot stored separately from chat metadata.
-
-### Durable Reconciliation
-
-- Merchant confirmation is separated from chain finality.
-- A merchant callback failure after successful chain settlement creates a durable reconciliation job.
-- The reconciliation worker retries confirmation with backoff -- it never resubmits the chain transaction.
-- Reconciliation jobs survive API restart via PostgreSQL persistence.
+- Durable reconciliation: merchant confirmation failures after chain settlement are retried without resubmitting the chain transaction.
 
 ---
 
 ## Security Model
 
-### Custody Architecture
-
-This is a **custodial** system by design. The backend holds encrypted signing material for both the owner and constrained agent accounts. Do not represent this as self-custody.
+This is a **custodial** system by design. The backend holds encrypted signing material for both the owner and constrained agent accounts.
 
 | Identity | Purpose |
 |---|---|
@@ -407,59 +275,9 @@ This is a **custodial** system by design. The backend holds encrypted signing ma
 | Constrained Agent Signer (`G...`) | Co-signs smart wallet spend calls. Cannot independently transfer funds. |
 | Agent Smart Wallet (`C...`) | User-visible programmable wallet holding spendable XLM. |
 
-### Encryption
-
-- Private keys encrypted at rest using AES-256-GCM with separate scoped derivations (`owner-wallet:<scope>` and `agent-signer:<scope>`).
-- Encryption keys derived from `MASTER_SECRET` via the server's crypto service.
+- Private keys encrypted at rest using AES-256-GCM with separate scoped derivations.
 - Merchant OAuth tokens encrypted at rest.
 - Delivery profile and invoice snapshots encrypted at rest.
-
-### Trust Boundaries
-
-```
-  Browser (untrusted)  --->  API (authorization, validation)  --->  Database (encrypted state)
-                                       |                |
-                                       v                v
-                              Merchant (OAuth,      Chain (immutable
-                              catalog authority)     policy authority)
-```
-
-### Data Classification
-
-| Data | Handling |
-|---|---|
-| Google credential / wallet signature | Verify once, do not persist raw credential. |
-| Session JWT | Browser session storage, server-validated, time-limited. |
-| Owner and agent private keys | AES-256-GCM encrypted, separate scoped derivations, never returned to browser or logs. |
-| Merchant OAuth tokens | Encrypted at rest, used only for granted store and scopes. |
-| Delivery profile / invoice address | Encrypted at rest. Not embedded in chat metadata. |
-| Product catalog and prices | Merchant API is source of truth. |
-| Spend rules and transfer events | On-chain canonical enforcement and proof. |
-
----
-
-## API Surface
-
-All protected endpoints require a valid JarvisPayz JWT. Rate limiting distinguishes chat write traffic from dashboard reads.
-
-| Route Group | Purpose |
-|---|---|
-| `POST /api/auth/google` | Google credential verification and session creation. |
-| `POST /api/auth/stellar` | Stellar wallet identity verification. |
-| `GET /api/wallet/info` | Retrieve managed wallet address and balance. |
-| `POST /api/wallet/fund` | Trigger testnet Friendbot funding. |
-| `GET /api/wallet/activity` | Wallet transaction history. |
-| `POST /api/chat/bootstrap` | Initialize or restore a chat session. |
-| `POST /api/chat/message` | Send a message to the shopping agent. |
-| `GET /api/chat/sessions` | List user chat sessions. |
-| `POST /api/sites/connect` | Start merchant OAuth discovery and connection. |
-| `GET /api/sites/oauth/callback` | OAuth authorization code callback. |
-| `DELETE /api/sites/:id` | Disconnect and revoke merchant access. |
-| `GET /api/purchases` | Purchase history. |
-| `GET /api/purchases/:id/invoice` | Retrieve encrypted invoice for a specific purchase. |
-| `GET /api/profile` | Read delivery profile. |
-| `PUT /api/profile` | Update delivery profile. |
-| `GET /api/health` | Deployment health check. |
 
 ---
 
@@ -473,122 +291,29 @@ All protected endpoints require a valid JarvisPayz JWT. Rate limiting distinguis
 - Google Cloud Console project (OAuth Client ID)
 - Gemini API key
 
-### 1. Clone the repository
+### Setup
 
 ```bash
 git clone <repository-url>
 cd agent
-```
 
-### 2. Configure environment variables
+# Configure environment variables
+cp server/.env.example server/.env    # Edit with your credentials
+cp client/.env.example client/.env    # Edit with your public config
 
-```bash
-# Server
-cp server/.env.example server/.env
-# Edit server/.env with your credentials
-
-# Client
-cp client/.env.example client/.env
-# Edit client/.env with your public configuration
-```
-
-**Server configuration requires:**
-
-| Variable | Description |
-|---|---|
-| `SUPABASE_DB_URL` | PostgreSQL connection string (transaction pooler). |
-| `GOOGLE_CLIENT_ID` | Google OAuth Client ID. |
-| `GEMINI_API_KEY` | Google Gemini API key for intent parsing. |
-| `JWT_SECRET` | High-entropy secret for session tokens. |
-| `MASTER_SECRET` | High-entropy secret for key encryption. |
-| `TRUSTLIST_CONTRACT_ID` | Deployed TrustList contract address. |
-| `AGENT_WALLET_WASM_HASH` | Deployed AgentWallet WASM hash. |
-| `SETTLEMENT_TOKEN_CONTRACT_ID` | Native XLM Stellar Asset Contract ID. |
-
-**Client configuration requires:**
-
-| Variable | Description |
-|---|---|
-| `VITE_API_URL` | Backend API URL. |
-| `VITE_GOOGLE_CLIENT_ID` | Google OAuth Client ID (must match server). |
-
-### 3. Run database migrations
-
-```bash
+# Database
 npx supabase db push
-```
 
-### 4. Build smart contracts
-
-```bash
+# Smart contracts
 cargo build --workspace --release
 cargo test --workspace
+
+# Start development servers
+cd server && npm install && npm run dev    # Terminal 1
+cd client && npm install && npm run dev    # Terminal 2
 ```
 
-### 5. Start the development servers
-
-```bash
-# Terminal 1 - Backend
-cd server
-npm install
-npm run dev
-
-# Terminal 2 - Frontend
-cd client
-npm install
-npm run dev
-```
-
-The frontend runs at `http://localhost:5173` and proxies API requests to `http://localhost:3001`.
-
-### 6. Verification
-
-```bash
-# Client
-cd client && npm run lint && npm test && npm run build
-
-# Server
-cd server && npm test
-
-# Contracts
-cargo test --workspace
-```
-
----
-
-## Deployment
-
-### Frontend (Vercel)
-
-- Static SPA deployment with `vercel.json` rewrite rules.
-- All routes rewrite to `/index.html` for client-side routing.
-- API requests proxy to the Railway-hosted backend.
-
-### Backend (Railway)
-
-- Dockerized Node.js 22 Alpine deployment.
-- Health check at `/api/health` with 180-second timeout.
-- Restart policy: on failure, maximum 10 retries.
-- Environment variables configured via Railway dashboard.
-
-### Database (Supabase)
-
-- Managed PostgreSQL with connection pooling.
-- 16 sequential migration files covering the full schema.
-- Row-level security oriented data model.
-
----
-
-## Observability
-
-Both integrations are optional and privacy-safe.
-
-| Tool | Purpose | Privacy Constraints |
-|---|---|---|
-| Sentry | Error tracking and performance monitoring | No chat content, wallet addresses, delivery data, OAuth tokens, cookies, headers, or secrets. |
-| PostHog | Aggregate product analytics | Automatic capture and session replay disabled. No sensitive shopping or payment context. |
-
-Audit and workflow events retain lifecycle evidence for checkout, payment, and reconciliation without recording secret material.
+See `server/.env.example` and `client/.env.example` for the full list of required configuration variables.
 
 ---
 
@@ -624,15 +349,13 @@ Proof of 10+ user wallet interactions on the Stellar testnet. Each hash links to
 | 11 | Merchant Payment | [`<!-- TX_HASH_11 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_11 -->) |
 | 12 | Wallet Funding | [`<!-- TX_HASH_12 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_12 -->) |
 
-> Replace each `<!-- TX_HASH_N -->` placeholder with the actual transaction hash. The links will resolve to Stellar Expert testnet explorer.
+> Replace each `<!-- TX_HASH_N -->` placeholder with the actual transaction hash.
 
 ---
 
 ## Screenshots
 
 ### Product UI -- Desktop
-
-<!-- Replace with actual screenshot paths -->
 
 | View | Screenshot |
 |---|---|
@@ -645,8 +368,6 @@ Proof of 10+ user wallet interactions on the Stellar testnet. Each hash links to
 
 ### Mobile Responsive Design
 
-<!-- Replace with actual screenshot paths -->
-
 | View | Screenshot |
 |---|---|
 | Mobile Chat Interface | `<!-- screenshots/mobile-chat.png -->` |
@@ -656,41 +377,24 @@ Proof of 10+ user wallet interactions on the Stellar testnet. Each hash links to
 
 ### Analytics and Monitoring
 
-<!-- Replace with actual screenshot paths (redacted) -->
-
 | Tool | Screenshot |
 |---|---|
 | Sentry Error Dashboard (redacted) | `<!-- screenshots/sentry-dashboard.png -->` |
 | PostHog Event Dashboard (redacted) | `<!-- screenshots/posthog-dashboard.png -->` |
 
-> Add screenshots to the `docs/evidence/` directory and update the paths above. Never expose private keys, database URIs, JWTs, OAuth tokens, delivery details, or account data in screenshots.
-
 ---
 
 ## Demo Video
 
-<!-- Replace with actual demo video link -->
-
 **Demo video:** `<!-- DEMO_VIDEO_LINK -->`
 
-The demo should cover the following end-to-end flow:
+The demo covers: Google sign-in, wallet restore/funding, store OAuth connection to [TestMarket](https://test-market-theta.vercel.app), natural-language search, basket/quantity changes, checkout approval with exact merchant total, on-chain payment, and Stellar Explorer receipt.
 
-1. Google sign-in and wallet restoration
-2. Friendbot funding and balance display
-3. Store OAuth connection
-4. Natural-language product search
-5. Basket management and quantity changes
-6. Checkout approval with exact merchant total
-7. On-chain payment and Stellar Explorer receipt
-8. Merchant order confirmation
-
-> Replace `<!-- DEMO_VIDEO_LINK -->` with the actual video URL (YouTube, Loom, or equivalent).
+> Replace `<!-- DEMO_VIDEO_LINK -->` with the actual video URL.
 
 ---
 
 ## User Feedback Summary
-
-<!-- Replace with actual feedback data -->
 
 | Metric | Value |
 |---|---|
@@ -700,25 +404,17 @@ The demo should cover the following end-to-end flow:
 
 ### Key Findings
 
-<!-- Replace with actual findings -->
-
 1. `<!-- FINDING_1 -->`
 2. `<!-- FINDING_2 -->`
 3. `<!-- FINDING_3 -->`
 
 ### Follow-Up Actions
 
-<!-- Replace with actual follow-up items -->
-
 1. `<!-- ACTION_1 -->`
 2. `<!-- ACTION_2 -->`
-
-> Anonymize all participant data. Do not include names, wallet addresses, or transaction details in the feedback summary.
 
 ---
 
 ## License
-
-<!-- Specify your license -->
 
 `<!-- LICENSE_TYPE -->`
