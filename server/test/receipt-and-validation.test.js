@@ -55,6 +55,12 @@ test('semantic decisions fail closed without a pending purchase', () => {
   assert.deepEqual(literalCatalogQueries(['true wireless earbuds', 'wireless headphones']), [
     'true wireless earbuds', 'wireless headphones', 'earbuds', 'headphones',
   ]);
+  assert.equal(normalizeSemanticIntent({ action: 'checkout_cart' }, {
+    pendingBatch: { id: 'basket-1', state: 'selected', itemCount: 2 },
+  }).action, 'checkout_cart');
+  assert.equal(normalizeSemanticIntent({ action: 'confirm_batch' }, {
+    pendingBatch: { id: 'basket-1', state: 'selected', itemCount: 2 },
+  }).action, 'checkout_cart');
 });
 
 test('semantic follow-up questions stay scoped to products already shown', () => {

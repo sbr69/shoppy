@@ -350,7 +350,7 @@ async function handleQuestion(userId, sessionId, intent, lastCompletedPurchase =
 export async function processMessage(userId, sessionId, message, googleSub) {
   const db = getDb();
   const [pendingRows, completedPurchaseRows, sessionMessages, userPreferences, shoppingTask, conversationMemory] = await Promise.all([
-    db`select id, state, product_json, quantity, merchant_order_id, price_xlm from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('suggested', 'selected', 'confirmed') order by updated_at desc limit 24`,
+    db`select id, state, product_json, quantity, merchant_order_id, price_xlm, batch_id from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('suggested', 'selected', 'confirmed') order by updated_at desc limit 24`,
     db`select id, state, product_json, quantity, merchant_order_id, price_xlm, updated_at from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state in ('payment_submitted', 'payment_confirmed', 'order_confirmed') order by updated_at desc limit 1`,
     db`select role, content, metadata from messages where session_id = ${sessionId} order by created_at asc`,
     getShoppingPreferences(userId),
@@ -689,6 +689,14 @@ async function handleAddToCart(userId, sessionId, requestedIds, requestedQuantit
 /** Verify a cart only after the user explicitly asks to checkout. */
 async function handleCartCheckout(userId, sessionId, googleSub) {
   const db = getDb();
+  // A multi-item cart becomes a durable selected batch before we ask for a
+  // delivery profile. Resume that same batch after Settings is completed;
+  // looking only for unbatched rows made a saved basket look empty.
+  const [existingBatch] = await db`
+    select id from purchase_batches
+    where user_id = ${userId} and session_id = ${sessionId} and state in ('selected', 'confirmed')
+    order by updated_at desc limit 1`;
+  if (existingBatch) return handleBatchConfirmation(userId, sessionId, googleSub, null, existingBatch.id);
   const items = await db`select * from purchase_intents where user_id = ${userId} and session_id = ${sessionId} and state = 'selected' and batch_id is null order by updated_at asc limit 20`;
   if (!items.length) return { type: 'text', content: '**Your cart is empty**\n\nAdd one or more product cards first.' };
   if (items.length === 1) return handleConfirmation(userId, sessionId, googleSub, items[0].id);
@@ -795,6 +803,13 @@ async function handleBatchConfirmation(userId, sessionId, googleSub, requestedId
   let batch = null;
   let items = [];
   if (requestedIds?.length >= 2) {
+    // Do not turn selected cart rows into a batch until checkout has the
+    // required delivery data. This keeps an incomplete profile from changing
+    // the cart's observable state.
+    const profileState = await getProfile(userId);
+    if (profileState.missing.length) {
+      return { type: 'profile_required', content: `**Delivery details required**\n\nComplete ${profileState.missing.join(', ')} in Settings → Personal details. Your basket will remain saved.`, metadata: { missing: profileState.missing } };
+    }
     batch = await createPurchaseBatch(userId, sessionId, requestedIds);
     if (!batch) return { type: 'text', content: '**Cart needs attention**\n\nOne or more cart items are no longer active. Search again to refresh them.' };
     items = batch.intents;
