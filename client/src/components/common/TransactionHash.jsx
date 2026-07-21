@@ -32,7 +32,6 @@ export default function TransactionHash({ hash, explorerUrl, className = '' }) {
       ) : <code>{truncateHash(hash)}</code>}
       <button type="button" className="copy-tx-button" onClick={copyHash} aria-label="Copy transaction hash" title="Copy transaction hash">
         {copied ? <Check size={13} weight="bold" aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-        <span>{copied ? 'Copied' : 'Copy'}</span>
       </button>
     </span>
   );

@@ -247,30 +247,28 @@
 .transaction-hash-control {
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.25rem;
   max-width: 100%;
 }
 
 .copy-tx-button {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
   flex: 0 0 auto;
-  min-height: 26px;
-  padding: 0.25rem 0.45rem;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font: 600 0.6875rem/1 var(--font-sans);
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
   cursor: pointer;
-  transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
+  transition: color var(--duration-fast), background var(--duration-fast);
 }
 
 .copy-tx-button:hover,
 .copy-tx-button:focus-visible {
-  border-color: var(--color-accent);
   background: var(--bg-secondary);
   color: var(--color-accent-dark);
 }
