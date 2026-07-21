@@ -112,6 +112,20 @@ export async function autoConnectTestMarketForNewUser(userId, googleSub) {
   if (!config.testMarketAutoConnect) return null;
   const siteUrl = new URL(config.testMarketAutoConnectUrl).origin;
   const db = getDb();
+  // The temporary test grant must use the same merchant identity the person
+  // will later use at TestMarket. This keeps orders created by the agent
+  // visible after that person subsequently signs in with Google or Stellar.
+  const [[account], [stellarIdentity]] = await Promise.all([
+    db`select email, name from users where id = ${userId}`,
+    db`select public_key from stellar_identities where user_id = ${userId} limit 1`,
+  ]);
+  if (!account?.email) throw new Error('Unable to resolve the account for TestMarket authorization');
+  // TestMarket's Stellar sign-in identifies accounts as <public-key>@stellar.wallet.
+  // Use that durable identity for wallet-authenticated shoppers; Google users
+  // retain their verified Google email.
+  const merchantIdentityEmail = stellarIdentity?.public_key
+    ? `${stellarIdentity.public_key.toLowerCase()}@stellar.wallet`
+    : account.email;
   const [existing] = await db`select * from connected_sites where user_id = ${userId} and site_url = ${siteUrl}`;
   if (existing?.auth_token_ciphertext && ['active', 'paused'].includes(existing.status)) return existing;
 
@@ -129,7 +143,13 @@ export async function autoConnectTestMarketForNewUser(userId, googleSub) {
       'Content-Type': 'application/json',
       'X-JarvisPayz-Test-Grant': config.testMarketAutoGrantSecret,
     },
-    body: JSON.stringify({ client_id: client.clientId, client_secret: client.clientSecret, subject: userId }),
+    body: JSON.stringify({
+      client_id: client.clientId,
+      client_secret: client.clientSecret,
+      subject: userId,
+      email: merchantIdentityEmail,
+      name: account.name || null,
+    }),
     signal: AbortSignal.timeout(10_000),
     redirect: 'error',
   });
