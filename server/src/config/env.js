@@ -90,10 +90,31 @@ const config = {
   // A store must be explicitly registered before the agent can access it.
   // This intentionally replaces arbitrary URL scraping for purchase flows.
   supportedStores: parseSupportedStores(process.env.SUPPORTED_STORES_JSON),
+
+  // Temporary TestMarket onboarding switch. It is deliberately opt-in and
+  // requires a separate shared secret; ordinary merchant OAuth is unchanged.
+  testMarketAutoConnect: process.env.TESTMARKET_AUTO_CONNECT === 'true',
+  testMarketAutoConnectUrl: process.env.TESTMARKET_AUTO_CONNECT_URL || 'https://test-market-theta.vercel.app',
+  testMarketAutoGrantSecret: process.env.TESTMARKET_AUTO_GRANT_SECRET || '',
+  testMarketAutoConnectCap: Number(process.env.TESTMARKET_AUTO_CONNECT_CAP || 1000),
 };
 
 if (!Number.isInteger(config.databasePoolMax) || config.databasePoolMax < 1 || config.databasePoolMax > 50) {
   throw new Error('DATABASE_POOL_MAX must be an integer between 1 and 50');
+}
+if (config.testMarketAutoConnect) {
+  if (!config.testMarketAutoGrantSecret || config.testMarketAutoGrantSecret.length < 32) {
+    throw new Error('TESTMARKET_AUTO_GRANT_SECRET must be at least 32 characters when TESTMARKET_AUTO_CONNECT is enabled');
+  }
+  try {
+    const url = new URL(config.testMarketAutoConnectUrl);
+    if (url.protocol !== 'https:') throw new Error('must use HTTPS');
+  } catch (error) {
+    throw new Error(`TESTMARKET_AUTO_CONNECT_URL is invalid: ${error.message}`);
+  }
+  if (!Number.isFinite(config.testMarketAutoConnectCap) || config.testMarketAutoConnectCap < 0) {
+    throw new Error('TESTMARKET_AUTO_CONNECT_CAP must be a non-negative number');
+  }
 }
 if (nodeEnv === 'production') {
   for (const [name, value] of Object.entries({ SUPABASE_DB_URL: config.supabaseDbUrl, TRUSTLIST_CONTRACT_ID: config.trustListContractId, AGENT_WALLET_WASM_HASH: config.agentWalletWasmHash, SETTLEMENT_TOKEN_CONTRACT_ID: config.settlementTokenContractId })) {

@@ -3,6 +3,7 @@ import { OAuth2Client } from 'google-auth-library';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
 import { ensureAgentWalletForUser, ensureCustodialWalletForUser } from './wallet.service.js';
+import { autoConnectTestMarketForNewUser } from './site-oauth.service.js';
 
 function issueSession(user) {
   return jwt.sign({
@@ -80,6 +81,7 @@ export async function loginWithGoogle(idToken) {
         ensureCustodialWalletForUser(createdUser.id, createdUser.wallet_scope),
         ensureAgentWalletForUser(createdUser.id, createdUser.wallet_scope),
       ]);
+      await autoConnectTestMarketForNewUser(createdUser.id, createdUser.wallet_scope);
     } catch (error) {
       await db`delete from users where id = ${createdUser.id}`;
       throw error;

@@ -83,6 +83,70 @@ async function createSiteAndClient(userId, input) {
   return updated;
 }
 
+function tokenRecord(token, client) {
+  if (!token?.access_token || typeof token.access_token !== 'string') throw new Error('TestMarket auto-grant did not return an access token');
+  const expiresAt = new Date(Date.now() + Number(token.expires_in || 900) * 1000).toISOString();
+  return {
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token || null,
+    tokenType: token.token_type || 'Bearer',
+    expiresAt,
+    scope: token.scope || client.scopes.join(' '),
+  };
+}
+
+async function activateSiteWithToken(site, client, token) {
+  const db = getDb();
+  const credential = tokenRecord(token, client);
+  const sealed = encrypt(JSON.stringify(credential), tokenScope(site.id));
+  await db`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${credential.expiresAt}, auth_scope = ${credential.scope}, authorized_at = now(), status = 'active', policy_sync_error = null, updated_at = now() where id = ${site.id}`;
+  return credential;
+}
+
+/**
+ * Test-only onboarding path. It calls a private TestMarket endpoint that is
+ * disabled unless TestMarket is explicitly configured with the same secret.
+ * It neither changes nor bypasses the normal OAuth path for any other store.
+ */
+export async function autoConnectTestMarketForNewUser(userId, googleSub) {
+  if (!config.testMarketAutoConnect) return null;
+  const siteUrl = new URL(config.testMarketAutoConnectUrl).origin;
+  const db = getDb();
+  const [existing] = await db`select * from connected_sites where user_id = ${userId} and site_url = ${siteUrl}`;
+  if (existing?.auth_token_ciphertext && ['active', 'paused'].includes(existing.status)) return existing;
+
+  const site = await createSiteAndClient(userId, {
+    siteUrl,
+    spendingCap: config.testMarketAutoConnectCap,
+    perTransactionCap: config.testMarketAutoConnectCap,
+  });
+  const client = readClient(site);
+  const grantUrl = new URL('/api/agent/commerce/v1/test-grants', siteUrl);
+  const response = await fetch(grantUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-JarvisPayz-Test-Grant': config.testMarketAutoGrantSecret,
+    },
+    body: JSON.stringify({ client_id: client.clientId, client_secret: client.clientSecret, subject: userId }),
+    signal: AbortSignal.timeout(10_000),
+    redirect: 'error',
+  });
+  if (!response.ok) throw new Error(`TestMarket automatic authorization failed (${response.status})`);
+  const token = await response.json();
+  await activateSiteWithToken(site, client, token);
+  try {
+    await syncSitePolicy(userId, googleSub, site.id);
+  } catch (error) {
+    // Keep the authorized connection. Checkout retries policy synchronization
+    // before it can submit any payment, matching normal OAuth behaviour.
+    await db`update connected_sites set policy_sync_error = ${error.message}, updated_at = now() where id = ${site.id}`;
+  }
+  const [active] = await db`select * from connected_sites where id = ${site.id}`;
+  return active;
+}
+
 export async function startStoreOAuth(userId, input) {
   const site = await createSiteAndClient(userId, input);
   const client = readClient(site); const state = randomBytes(32).toString('base64url'); const stateHash = hash(state); const verifier = randomBytes(48).toString('base64url');
@@ -103,8 +167,7 @@ export async function completeStoreOAuth({ code, state, error, errorDescription 
     const client = readClient(site); const body = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callbackUrl(), client_id: client.clientId, client_secret: client.clientSecret, code_verifier: verifier });
     const response = await fetch(site.oauth_server_metadata.tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000), redirect: 'error' });
     if (!response.ok) throw new Error(`Token exchange failed (${response.status})`); const token = await response.json(); if (!token.access_token) throw new Error('Token response did not include an access token');
-    const expiresAt = new Date(Date.now() + Number(token.expires_in || 900) * 1000).toISOString(); const sealed = encrypt(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token, tokenType: token.token_type || 'Bearer', expiresAt, scope: token.scope || client.scopes.join(' ') }), tokenScope(site.id));
-    await db`update connected_sites set auth_token_ciphertext = ${sealed.encrypted.toString('base64')}, auth_token_iv = ${sealed.iv.toString('base64')}, auth_token_tag = ${sealed.authTag.toString('base64')}, auth_token_expires_at = ${expiresAt}, auth_scope = ${token.scope || client.scopes.join(' ')}, authorized_at = now(), status = 'active', updated_at = now() where id = ${site.id}`;
+    await activateSiteWithToken(site, client, token);
     const [user] = await db`select id, wallet_scope, google_sub from users where id = ${site.user_id}`;
     try {
       await syncSitePolicy(user.id, user.wallet_scope || user.google_sub, site.id);

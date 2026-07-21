@@ -4,6 +4,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import config from '../config/env.js';
 import getDb from '../db/database.js';
 import { ensureAgentWalletForUser, ensureCustodialWalletForUser } from './wallet.service.js';
+import { autoConnectTestMarketForNewUser } from './site-oauth.service.js';
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -86,6 +87,7 @@ export async function loginWithStellarWallet({ publicKey, challenge, signature }
         ensureCustodialWalletForUser(created.id, walletScope),
         ensureAgentWalletForUser(created.id, walletScope),
       ]);
+      await autoConnectTestMarketForNewUser(created.id, walletScope);
       await db`insert into stellar_identities (user_id, public_key) values (${created.id}, ${verifiedKey})`;
     } catch (error) {
       await db`delete from users where id = ${created.id}`;
