@@ -113,7 +113,7 @@ export function OrdersView({ onToggleSidebar }) {
                   {/* Stellar Hash */}
                   <div className="order-row-hash">
                     {order.stellar_tx_hash ? (
-                      <TransactionHash hash={order.stellar_tx_hash} explorerUrl={order.explorerUrl} />
+                      <TransactionHash hash={order.stellar_tx_hash} explorerUrl={order.explorerUrl} compact />
                     ) : (
                       <span className="hash-pending">Pending confirmation</span>
                     )}
@@ -243,7 +243,7 @@ export function WalletActivityView({ onToggleSidebar }) {
                 </div>
 
                 <div className="activity-row-tx">
-                  {item.txHash ? <TransactionHash hash={item.txHash} explorerUrl={item.explorerUrl} /> : <span>—</span>}
+                  {item.txHash ? <TransactionHash hash={item.txHash} explorerUrl={item.explorerUrl} compact /> : <span>—</span>}
                 </div>
 
                 <div className="activity-row-value">
