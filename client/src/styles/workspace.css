@@ -244,6 +244,42 @@
   color: var(--color-accent);
 }
 
+.transaction-hash-control {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+.copy-tx-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: 600 0.6875rem/1 var(--font-sans);
+  cursor: pointer;
+  transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
+}
+
+.copy-tx-button:hover,
+.copy-tx-button:focus-visible {
+  border-color: var(--color-accent);
+  background: var(--bg-secondary);
+  color: var(--color-accent-dark);
+}
+
+.copy-tx-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .hash-pending {
   color: var(--text-tertiary);
   font-style: italic;

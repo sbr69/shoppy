@@ -1262,6 +1262,17 @@
   color: var(--color-primary-light);
 }
 
+.receipt-transaction-hash .explorer-hash-link {
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.receipt-transaction-hash .explorer-hash-link:hover {
+  color: var(--color-primary-light);
+}
+
 .receipt-card-footer {
   margin-top: var(--space-4);
   padding-top: var(--space-4);

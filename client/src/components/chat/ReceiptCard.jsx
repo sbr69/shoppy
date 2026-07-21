@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle, ShoppingBag, ArrowSquareOut, MapPin, Package, ShieldCheck } from '@phosphor-icons/react';
 import api from '../../services/api';
+import TransactionHash from '../common/TransactionHash';
 
 const formatXlm = (value) => Number.isFinite(Number(value))
   ? `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 7 })} XLM`
@@ -91,9 +92,7 @@ export default function ReceiptCard({ product, purchase }) {
       <div className="receipt-card-row receipt-card-transaction">
         <span className="receipt-card-label">Transaction</span>
         <span className="receipt-card-value">
-          {explorerUrl ? <a href={explorerUrl} target="_blank" rel="noopener noreferrer" className="receipt-card-tx-link">
-            {truncateHash(transactionHash)} <ArrowSquareOut size={12} />
-          </a> : 'Transaction unavailable'}
+          {transactionHash ? <TransactionHash hash={transactionHash} explorerUrl={explorerUrl} className="receipt-transaction-hash" /> : 'Transaction unavailable'}
         </span>
       </div>
       <div className="receipt-card-row"><span className="receipt-card-label">Confirmed</span><span className="receipt-card-value">{displayTime}</span></div>

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowSquareOut,
   Clock,
   Package,
   ShieldCheck,
@@ -10,6 +9,7 @@ import {
   List,
 } from '@phosphor-icons/react';
 import api from '../../services/api';
+import TransactionHash from '../common/TransactionHash';
 
 const formatDate = (value) =>
   value
@@ -113,19 +113,7 @@ export function OrdersView({ onToggleSidebar }) {
                   {/* Stellar Hash */}
                   <div className="order-row-hash">
                     {order.stellar_tx_hash ? (
-                      order.explorerUrl ? (
-                        <a
-                          href={order.explorerUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="explorer-hash-link"
-                        >
-                          <code>{order.stellar_tx_hash.slice(0, 10)}…</code>
-                          <ArrowSquareOut size={12} />
-                        </a>
-                      ) : (
-                        <code>{order.stellar_tx_hash.slice(0, 10)}…</code>
-                      )
+                      <TransactionHash hash={order.stellar_tx_hash} explorerUrl={order.explorerUrl} />
                     ) : (
                       <span className="hash-pending">Pending confirmation</span>
                     )}
@@ -255,12 +243,7 @@ export function WalletActivityView({ onToggleSidebar }) {
                 </div>
 
                 <div className="activity-row-tx">
-                  {item.explorerUrl ? (
-                    <a href={item.explorerUrl} target="_blank" rel="noopener noreferrer" className="explorer-hash-link" aria-label="View transaction on Stellar Explorer">
-                      <code>{item.txHash.slice(0, 10)}…</code>
-                      <ArrowSquareOut size={12} />
-                    </a>
-                  ) : <span>—</span>}
+                  {item.txHash ? <TransactionHash hash={item.txHash} explorerUrl={item.explorerUrl} /> : <span>—</span>}
                 </div>
 
                 <div className="activity-row-value">
