@@ -7,7 +7,7 @@ JarvisPayz allows users to sign in, receive a persistent custodial smart wallet,
 | | |
 |---|---|
 | **Live Demo** | [jarvispayz-agent.vercel.app](https://jarvispayz-agent.vercel.app) |
-| **Test Merchant** | [test-market-theta.vercel.app](https://test-market-theta.vercel.app) |
+| **Test Merchant** | [test-market-theta.vercel.app](https://test-market-theta.vercel.app) ([Repository](https://github.com/sbr69/testmarket)) |
 | **Network** | Stellar Testnet (Soroban) |
 | **Settlement Asset** | Native XLM (test) |
 | **Status** | Testnet demonstration |
@@ -88,7 +88,7 @@ flowchart TB
 
 **1. Experience and Orchestration Plane** -- The React dashboard and Express API handle identity (Google OAuth / Stellar wallet sign-in), chat session management, AI-driven product search and ranking, merchant OAuth connection lifecycle, basket state, checkout preparation, invoice encryption, and purchase reconciliation.
 
-**2. Merchant Plane** -- Independently deployed ecommerce stores expose OAuth authorization server metadata, agent-commerce metadata, and scoped APIs for catalog search, checkout preparation, payment confirmation, and order management. [TestMarket](https://test-market-theta.vercel.app) is the reference merchant used for integration testing. JarvisPayz connects to any compatible merchant through URL discovery and standard OAuth -- there is no hard-coded merchant integration.
+**2. Merchant Plane** -- Independently deployed ecommerce stores expose OAuth authorization server metadata, agent-commerce metadata, and scoped APIs for catalog search, checkout preparation, payment confirmation, and order management. [TestMarket](https://test-market-theta.vercel.app) ([Repository](https://github.com/sbr69/testmarket)) is the reference merchant used for integration testing. JarvisPayz connects to any compatible merchant through URL discovery and standard OAuth -- there is no hard-coded merchant integration.
 
 **3. Settlement and Policy Plane** -- Per-user Soroban smart wallets hold spendable XLM. The AgentWallet contract enforces every spend against the TrustList policy contract before executing an atomic direct transfer to the merchant. No escrow, no intermediary.
 
@@ -386,6 +386,22 @@ The demo covers: Google sign-in, wallet restore/funding, store OAuth connection 
 ## User Feedback Summary
 
 Most users found the site and the agent a bit slow, and that's a real issue. I've identified the cause and will fix it in the next update.
+
+---
+
+## Team Review Summary
+
+### Technical Complexity
+JarvisPayz integrates a dual-signer model (custodial owner key and constrained agent key) encrypted at rest using AES-256-GCM. Outbound transfers are audited on-chain via per-user `AgentWallet` smart contracts that validate budgets, per-transaction limits, and merchant trust against a policy registry. A background reconciliation engine polls finality to confirm orders durably without duplicating payments, and the store discovery lifecycle uses OAuth 2.0 with PKCE (S256).
+
+### Product Quality
+The application removes standard Web3 friction by allowing users to sign in with Google OAuth to retrieve their persistent custodial wallet, bypassing private keys or browser extensions. Shopping queries are parsed by Gemini and presented as comparison cards where baskets are managed dynamically. The responsive interface is optimized for both desktop and mobile screens, featuring loading indicators and interactive drawers for approvals.
+
+### Architecture Quality
+The system uses a clean Three-Plane separation (Experience, Merchant, and Settlement planes), making the architecture highly modular and portable for future blockchain migrations. Gemini is constrained to intent parsing, while payments and checkout validation are fully deterministic. Observability is integrated via Sentry and PostHog, featuring automated telemetry scrubbers to keep chat logs and key material private.
+
+### Real-World Usefulness
+This project bridges Web2 and Web3 by allowing non-technical shoppers to utilize decentralized networks for ecommerce. By placing smart contract policy enforcement directly between the AI agent and the wallet balance, it creates a safe framework for agentic commerce where the AI can suggest basket additions but can never execute payments without explicit user approval.
 
 ---
 
