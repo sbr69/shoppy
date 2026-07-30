@@ -258,7 +258,7 @@ This project bridges Web2 and Web3 by allowing non-technical shoppers to utilize
 ### Setup
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/sbr69/shoppy.git
 cd agent
 
 # Configure environment variables
