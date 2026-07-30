@@ -9,7 +9,7 @@ JarvisPayz allows users to sign in, receive a persistent custodial smart wallet,
 | **Live Demo** | [jarvispayz-agent.vercel.app](https://jarvispayz-agent.vercel.app) |
 | **Test Merchant** | [test-market-theta.vercel.app](https://test-market-theta.vercel.app) |
 | **Merchant Repository** | [github.com/sbr69/testmarket](https://github.com/sbr69/testmarket) |
-| **Demo Video** | [youtu.be/3_hogOvz71U](https://youtu.be/3_hogOvz71U) |
+| **Demo Video** | [https://youtu.be/3_hogOvz71U](https://youtu.be/3_hogOvz71U) |
 | **Network** | Stellar Testnet (Soroban) |
 | **Settlement Asset** | Native XLM (test) |
 | **Status** | Testnet demonstration |
@@ -176,7 +176,7 @@ A policy registry mapping `(owner, domain_hash)` to merchant trust rules:
 
 ## User Wallet Interactions
 
-Proof of 10+ user wallet interactions on the Stellar testnet. Each address and hash links to its active page on Stellar Expert.
+Proof of 10+ user wallet interactions on the Stellar testnet.
 
 | Sl No. | Login Method | Agent's Wallet Address | Tx Hash |
 | :---: | :---: | :--- | :--- |
@@ -216,8 +216,6 @@ Proof of 10+ user wallet interactions on the Stellar testnet. Each address and h
 ## Demo Video
 
 **Demo video:** [https://youtu.be/3_hogOvz71U](https://youtu.be/3_hogOvz71U)
-
-The demo covers: Google sign-in, wallet restore/funding, store OAuth connection to [TestMarket](https://test-market-theta.vercel.app), natural-language search, basket/quantity changes, checkout approval with exact merchant total, on-chain payment, and Stellar Explorer receipt.
 
 ---
 
