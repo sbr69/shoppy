@@ -334,22 +334,18 @@ See `server/.env.example` and `client/.env.example` for the full list of require
 
 Proof of 10+ user wallet interactions on the Stellar testnet. Each hash links to the corresponding transaction on Stellar Expert.
 
-| # | Interaction Type | Transaction Hash |
-|---|---|---|
-| 1 | Wallet Funding | [`<!-- TX_HASH_1 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_1 -->) |
-| 2 | Wallet Funding | [`<!-- TX_HASH_2 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_2 -->) |
-| 3 | Policy Rule Set | [`<!-- TX_HASH_3 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_3 -->) |
-| 4 | Merchant Payment | [`<!-- TX_HASH_4 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_4 -->) |
-| 5 | Merchant Payment | [`<!-- TX_HASH_5 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_5 -->) |
-| 6 | Merchant Payment | [`<!-- TX_HASH_6 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_6 -->) |
-| 7 | Wallet Funding | [`<!-- TX_HASH_7 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_7 -->) |
-| 8 | Policy Rule Update | [`<!-- TX_HASH_8 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_8 -->) |
-| 9 | Merchant Payment | [`<!-- TX_HASH_9 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_9 -->) |
-| 10 | Fund Withdrawal | [`<!-- TX_HASH_10 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_10 -->) |
-| 11 | Merchant Payment | [`<!-- TX_HASH_11 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_11 -->) |
-| 12 | Wallet Funding | [`<!-- TX_HASH_12 -->`](https://stellar.expert/explorer/testnet/tx/<!-- TX_HASH_12 -->) |
-
-> Replace each `<!-- TX_HASH_N -->` placeholder with the actual transaction hash.
+| Sl No. | Login Method | Agent's Wallet Address | Tx Hash |
+| :---: | :---: | :--- | :--- |
+| 1 | Google | [`CDFACHLS...`](https://stellar.expert/explorer/testnet/contract/CDFACHLSKLZI6SZYHPTBCXAKH2VH6CCP73OVVA4IDERITH7ATQ5EFMLH) | [`56b910e3d...`](https://stellar.expert/explorer/testnet/tx/56b910e3d09334f9ec118653d8413834524de0b99bd020a8b23a605b31cba6fa) |
+| 2 | Google | [`CBTXDCNJ...`](https://stellar.expert/explorer/testnet/contract/CBTXDCNJ47LG32YREVKXFXGE55IWBYHZ5UNI5DX7WVAMD5J65GCZLAJQ) | [`d48ae8b9e...`](https://stellar.expert/explorer/testnet/tx/d48ae8b9ec8abaef511c6b7b6739f4ac22f3765422910a5ac066e07b7738b19a) |
+| 3 | Google | [`CAVXKUZN...`](https://stellar.expert/explorer/testnet/contract/CAVXKUZNBDWMEEKEFNNRUVZOY2V5J2TIMJQ7UTJPQDE35JJ3SKDYNY6Q) | [`9bd81a18f...`](https://stellar.expert/explorer/testnet/tx/9bd81a18f88c08fac800747829c5fa7b3dcad5a6daf8b78e186eb9e072a3cb83) |
+| 4 | Wallet | [`CDAXFCA5...`](https://stellar.expert/explorer/testnet/contract/CDAXFCA5ZHIXJ3UQIRLMDD7M42Y3WMJWJEJMROYMD3JFCXQJNWJKITER) | [`bd3c53b72...`](https://stellar.expert/explorer/testnet/tx/bd3c53b728c86c4c9ae5dae4deb90f8bbf901ab0ad64d5b5e0d664164d172088) |
+| 5 | Google | [`CAB2T3KC...`](https://stellar.expert/explorer/testnet/contract/CAB2T3KC7RFO2ARVRGX5QM7X6COOKJILDM3EJWVF24GGZWUFUPPBROUE) | [`c1c1686dc...`](https://stellar.expert/explorer/testnet/tx/c1c1686dc0eb647f490b355fb628635e13eeb17addde19e5b478ade932022bdf) |
+| 6 | Google | [`CB4RTF3H...`](https://stellar.expert/explorer/testnet/contract/CB4RTF3HZ3UPYYJX5X7ILGQYJXU3Y67VCWOMGCKAASJUCU233TFVEE4Z) | [`325e46a06...`](https://stellar.expert/explorer/testnet/tx/325e46a069275d5c15933731960615387ee50e8192931c7a26255200976d2fe2) |
+| 7 | Google | [`CDJKMCOJ...`](https://stellar.expert/explorer/testnet/contract/CDJKMCOJAIRA5REUYG575DP2DV5NSCYI7QAU4DUW6VIBOMWCKKVWE3FF) | [`910032bfb...`](https://stellar.expert/explorer/testnet/tx/910032bfb9a94f11410d823acc110b4ab1a218cadc3e1ebf0fe324e956f6723f) |
+| 8 | Google | [`CCAJL7SJ...`](https://stellar.expert/explorer/testnet/contract/CCAJL7SJDHC4SOCZO7DSIOZRTWBTDGSFBNJQL4OAGP7CQTDGOQYOLRAV) | [`45ac44ba9...`](https://stellar.expert/explorer/testnet/tx/45ac44ba9a6219e318f9ab928a718e33a778b127c72c979106766d6b527e70c5) |
+| 9 | Wallet | [`CCSMAFS6...`](https://stellar.expert/explorer/testnet/contract/CCSMAFS6QE3C6J6D6EGKBFPK6ZMCD7ZSKXSHWDHKO635BWSCQHFVUZAR) | [`d3b81969a...`](https://stellar.expert/explorer/testnet/tx/d3b81969affd63b915dbebc799df0eff0e958adef34610bef4f66d070bc5a2a5) |
+| 10 | Wallet | [`CDVVJSHB...`](https://stellar.expert/explorer/testnet/contract/CDVVJSHBF2C2ZBFTO2HN5J7AFTGLEMPRN2E6ZLLLGZC4RAY774XAZ52S) | [`191f4fd1c...`](https://stellar.expert/explorer/testnet/tx/191f4fd1cb043458ec3f113438bdb0ec023722f80fc2b8e73c3f4e823ed9897d) |
 
 ---
 
@@ -379,8 +375,9 @@ Proof of 10+ user wallet interactions on the Stellar testnet. Each hash links to
 
 | Tool | Screenshot |
 |---|---|
-| Sentry Error Dashboard (redacted) | `<!-- screenshots/sentry-dashboard.png -->` |
-| PostHog Event Dashboard (redacted) | `<!-- screenshots/posthog-dashboard.png -->` |
+| Sentry Error Dashboard | ![Sentry Dashboard](screenshots/sentry-dashboard.png) |
+| PostHog Activity Explorer | ![PostHog Activity](screenshots/posthog-activity.png) |
+| PostHog Web Analytics Dashboard | ![PostHog Web Analytics](screenshots/posthog-web-analytics.png) |
 
 ---
 
@@ -396,25 +393,10 @@ The demo covers: Google sign-in, wallet restore/funding, store OAuth connection 
 
 ## User Feedback Summary
 
-| Metric | Value |
-|---|---|
-| Participants | `<!-- N -->` |
-| Test period | `<!-- START_DATE -->` to `<!-- END_DATE -->` |
-| Tasks completed | `<!-- TASKS_DESCRIPTION -->` |
-
-### Key Findings
-
-1. `<!-- FINDING_1 -->`
-2. `<!-- FINDING_2 -->`
-3. `<!-- FINDING_3 -->`
-
-### Follow-Up Actions
-
-1. `<!-- ACTION_1 -->`
-2. `<!-- ACTION_2 -->`
+Most users found the site and the agent a bit slow, and that's a real issue. I've identified the cause and will fix it in the next update.
 
 ---
 
 ## License
 
-`<!-- LICENSE_TYPE -->`
+Copyright © 2026 JarvisPayz. All rights reserved. Proprietary.
