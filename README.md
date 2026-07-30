@@ -353,23 +353,17 @@ Proof of 10+ user wallet interactions on the Stellar testnet. Each hash links to
 
 ### Product UI -- Desktop
 
-| View | Screenshot |
-|---|---|
-| Dashboard with Chat | `<!-- screenshots/desktop-dashboard.png -->` |
-| Product Search Results | `<!-- screenshots/desktop-search-results.png -->` |
-| Checkout Approval | `<!-- screenshots/desktop-checkout.png -->` |
-| Purchase Receipt with Explorer Link | `<!-- screenshots/desktop-receipt.png -->` |
-| Store Connection (OAuth) | `<!-- screenshots/desktop-store-connect.png -->` |
-| Wallet Activity | `<!-- screenshots/desktop-wallet-activity.png -->` |
+![Dashboard and Chat](screenshots/desktop-dashboard.png)
 
 ### Mobile Responsive Design
 
-| View | Screenshot |
-|---|---|
-| Mobile Chat Interface | `<!-- screenshots/mobile-chat.png -->` |
-| Mobile Menu and Navigation | `<!-- screenshots/mobile-menu.png -->` |
-| Mobile Store Dialog | `<!-- screenshots/mobile-store-dialog.png -->` |
-| Mobile Receipt | `<!-- screenshots/mobile-receipt.png -->` |
+![Mobile Chat](screenshots/mobile-chat.png)
+![Mobile Menu](screenshots/mobile-menu.png)
+![Mobile Telemetry & Stores](screenshots/mobile-store-dialog.png)
+![Mobile Orders](screenshots/mobile-receipt.png)
+![Mobile Product Search](screenshots/mobile-search-results.png)
+![Mobile Payment Details](screenshots/mobile-payment-details.png)
+![Mobile Wallet Activity](screenshots/mobile-wallet-activity.png)
 
 ### Analytics and Monitoring
 
@@ -383,11 +377,9 @@ Proof of 10+ user wallet interactions on the Stellar testnet. Each hash links to
 
 ## Demo Video
 
-**Demo video:** `<!-- DEMO_VIDEO_LINK -->`
+**Demo video:** [https://youtu.be/3_hogOvz71U](https://youtu.be/3_hogOvz71U)
 
 The demo covers: Google sign-in, wallet restore/funding, store OAuth connection to [TestMarket](https://test-market-theta.vercel.app), natural-language search, basket/quantity changes, checkout approval with exact merchant total, on-chain payment, and Stellar Explorer receipt.
-
-> Replace `<!-- DEMO_VIDEO_LINK -->` with the actual video URL.
 
 ---
 
