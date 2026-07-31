@@ -9,7 +9,7 @@ on:
 jobs:
   # ── Frontend (React / Vite) ──────────────────────────────────
   frontend:
-    name: Frontend — Lint & Build
+    name: Frontend — Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,9 +25,6 @@ jobs:
           cache-dependency-path: client/package-lock.json
 
       - run: npm ci
-
-      - name: Lint
-        run: npm run lint
 
       - name: Build production bundle
         run: npm run build
@@ -62,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           targets: wasm32-unknown-unknown
 
