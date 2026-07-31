@@ -58,11 +58,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # Soroban SDK 25.x requires Rust <=1.81 for wasm32-unknown-unknown
+      # Soroban SDK 25.x on modern Rust requires wasm32v1-none (available from 1.84+)
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
-          toolchain: "1.81"
-          targets: wasm32-unknown-unknown
+          toolchain: "1.85"
+          targets: wasm32v1-none
 
       - name: Cache cargo registry & build
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -71,11 +71,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-1.81-${{ hashFiles('Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-1.81-
+          key: ${{ runner.os }}-cargo-1.85-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-1.85-
 
       - name: Run contract unit tests
         run: cargo test --workspace
 
       - name: Build WASM release (verify compilation)
-        run: cargo build --workspace --release --target wasm32-unknown-unknown
+        run: cargo build --workspace --release --target wasm32v1-none
